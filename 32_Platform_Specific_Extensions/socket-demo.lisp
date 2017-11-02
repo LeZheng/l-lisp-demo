@@ -14,6 +14,7 @@
          (SOCKET:SOCKET-SERVER-CLOSE server)))) 
 
 (DEFUN wget-text (host page file &OPTIONAL (port 80))
+       "This function is to get a page from host/page:port,and output to file,like:(wget-text \"www.baidu.com\" \"/\" \"a.txt\")"
        (WITH-OPEN-STREAM (socket (SOCKET:SOCKET-CONNECT port host :EXTERNAL-FORMAT :DOS))
                          (FORMAT socket "GET ~A HTTP/1.0~2%" page)
                          (WITH-OPEN-FILE (out file :direction :output)
@@ -21,6 +22,7 @@
                                                :do (WRITE-LINE line out)))))
 
 (DEFUN wget-binary (host page file &OPTIONAL (port 80))
+       "This function is to get a binary file from host/page:port,and output to file"
        (WITH-OPEN-STREAM 
          (socket (SOCKET:SOCKET-CONNECT port host :EXTERNAL-FORMAT :DOS))
          (FORMAT socket "GET ~A HTTP/1.0~2%" page)
@@ -38,6 +40,7 @@
                                            data))))))
 
 (DEFUN wput (host page file &OPTIONAL (port 80))
+       "This function is to put a file to host/page:port"
        (WITH-OPEN-STREAM 
          (socket (SOCKET:SOCKET-CONNECT port host :EXTERNAL-FORMAT :DOS))
          (WITH-OPEN-FILE 
