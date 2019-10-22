@@ -18,3 +18,22 @@
     (let ((min-index i))
       (loop for j from i to (1- (length arr)) do (if (< (elt arr j) (elt arr min-index)) (setf min-index j)))
       (rotatef (elt arr i) (elt arr min-index)))))
+
+;;4,希尔排序
+(defun shell-sort (arr)
+  (do ((gap (floor (length arr) 2) (floor gap 2)))
+    ((< gap 1) arr)
+    (dotimes (i gap)
+      (dotimes (k (1- (floor (length arr) gap)))
+        (loop for j from (+ i (* gap k)) downto 0 by gap do (if (< (elt arr (+ j gap)) (elt arr j))
+                                                                 (rotatef (elt arr j) (elt arr (+ j gap)))
+                                                                 (return)))))))
+
+;;5,归并排序
+(defun merge-sort (arr)
+  (if (< (length arr) 2)
+    arr
+    (let ((arr-1 (merge-sort (subseq arr 0 (floor (length arr) 2))))
+          (arr-2 (merge-sort (subseq arr (floor (length arr) 2)))))
+      (merge 'vector arr-1 arr-2 #'<))))
+
