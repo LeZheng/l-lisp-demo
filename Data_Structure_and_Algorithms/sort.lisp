@@ -37,3 +37,18 @@
           (arr-2 (merge-sort (subseq arr (floor (length arr) 2)))))
       (merge 'vector arr-1 arr-2 #'<))))
 
+;;6,快速排序
+(defun quick-sort (arr)
+  (labels ((q-sort (seq start end)
+                 (if (>= start end)
+                   seq
+                   (let ((key (elt seq start))
+                         (i start)
+                         (j end))
+                     (loop (if (= i j)
+                             (progn (q-sort seq start (1- i)) 
+                                    (q-sort seq (1+ i) end)
+                                    (return seq))
+                             (progn (loop for index from j downto i do (setf j index) until (< (elt seq index) key) finally (if (>= index i) (rotatef (elt seq index) (elt seq i))))
+                                    (loop for index from i to j do (setf i index) until (> (elt seq index) key) finally (if (<= index j) (rotatef (elt seq index) (elt seq j)))))))))))
+    (q-sort arr 0 (1- (length arr)))))
