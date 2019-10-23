@@ -5,6 +5,13 @@
        (if (> (elt arr j) (elt arr (1+ j)))
          (rotatef (elt arr j) (elt arr (1+ j)))))))
 
+(defun bubble-sort-2 (arr &optional (start 0))
+  (if (>= start (1- (length arr)))
+    arr
+    (progn (loop for i from (1- (length arr)) above start
+                      do (if (< (elt arr i) (elt arr (1- i))) (rotatef (elt arr i) (elt arr (1- i)))))
+           (bubble-sort-2 arr (1+ start)))))
+
 ;;2,插入排序
 (defun insert-sort (arr)
   (dotimes (i (1- (length arr)) arr)
