@@ -19,12 +19,25 @@
                                           (rotatef (elt arr j) (elt arr (1- j)))
                                           (return)))))
 
+(defun insert-sort-2 (arr &optional (start 0))
+  (if (= start (length arr))
+    arr
+    (loop for i from start downto 1 until (> (elt arr i) (elt arr (1- i))) do (rotatef (elt arr i) (elt arr (1- i)))
+          finally (return (insert-sort-2 arr (1+ start))))))
+
 ;;3,选择排序
 (defun select-sort (arr)
   (dotimes (i (1- (length arr)) arr)
     (let ((min-index i))
       (loop for j from i to (1- (length arr)) do (if (< (elt arr j) (elt arr min-index)) (setf min-index j)))
       (rotatef (elt arr i) (elt arr min-index)))))
+
+(defun select-sort-2 (arr &optional (start 0))
+  (if (>= start (1- (length arr)))
+    arr
+    (loop with min-index = start for i from start to (1- (length arr)) do (if (< (elt arr i) (elt arr min-index)) (setf min-index i))
+          finally (progn (rotatef (elt arr min-index) (elt arr start))
+                         (return (select-sort-2 arr (1+ start)))))))
 
 ;;4,希尔排序
 (defun shell-sort (arr)
