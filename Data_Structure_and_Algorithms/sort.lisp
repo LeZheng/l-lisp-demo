@@ -72,3 +72,15 @@
                              (progn (loop for index from j downto i do (setf j index) until (< (elt seq index) key) finally (if (>= index i) (rotatef (elt seq index) (elt seq i))))
                                     (loop for index from i to j do (setf i index) until (> (elt seq index) key) finally (if (<= index j) (rotatef (elt seq index) (elt seq j)))))))))))
     (q-sort arr 0 (1- (length arr)))))
+
+;;7,基数排序
+(defun radix-sort (arr &optional (radix 0) (max-radix nil))
+  (setf max-radix (or max-radix (reduce #'max arr :key #'integer-length)))
+  (let ((bucket (make-array 16)))
+    (dotimes (i (length arr))
+      (let ((r (ldb (byte 4 (* radix 4)) (elt arr i))))
+        (push (elt arr i) (aref bucket r))))
+    (let ((bucket-seq (coerce (reduce #'nconc bucket :key #'reverse) 'vector)))
+      (if (<= max-radix radix)
+        bucket-seq
+        (radix-sort bucket-seq (1+ radix) max-radix)))))
