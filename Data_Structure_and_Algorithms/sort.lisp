@@ -59,18 +59,21 @@
 
 ;;6,快速排序
 (defun quick-sort (arr)
-  (labels ((q-sort (seq start end)
-                 (if (>= start end)
-                   seq
-                   (let ((key (elt seq start))
-                         (i start)
-                         (j end))
-                     (loop (if (= i j)
-                             (progn (q-sort seq start (1- i)) 
-                                    (q-sort seq (1+ i) end)
-                                    (return seq))
-                             (progn (loop for index from j downto i do (setf j index) until (< (elt seq index) key) finally (if (>= index i) (rotatef (elt seq index) (elt seq i))))
-                                    (loop for index from i to j do (setf i index) until (> (elt seq index) key) finally (if (<= index j) (rotatef (elt seq index) (elt seq j)))))))))))
+  (labels ((q-sort (vec l r)
+                   (let ((i l)
+                         (j r)
+                         (p (svref vec (round (+ l r) 2))))
+                     (loop while (<= i j) 
+                           do (progn
+                                (loop while (< (svref vec i) p) do (incf i))
+                                (loop while (> (svref vec j) p) do (decf j))
+                                (when (<= i j)
+                                  (rotatef (svref vec i) (svref vec j))
+                                  (incf i)
+                                  (decf j))))
+                     (if (>= (- j l) 1) (q-sort vec l j))
+                     (if (>= (- r i) 1) (q-sort vec i r)))
+                   vec))
     (q-sort arr 0 (1- (length arr)))))
 
 ;;7,基数排序
