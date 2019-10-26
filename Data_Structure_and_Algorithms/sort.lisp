@@ -75,12 +75,27 @@
 
 ;;7,基数排序
 (defun radix-sort (arr &optional (radix 0) (max-radix nil))
-  (setf max-radix (or max-radix (reduce #'max arr :key #'integer-length)))
-  (let ((bucket (make-array 16)))
-    (dotimes (i (length arr))
-      (let ((r (ldb (byte 4 (* radix 4)) (elt arr i))))
-        (push (elt arr i) (aref bucket r))))
+  (let ((bucket (make-array 16))
+        (max-radix (or max-radix (reduce #'max arr :key #'integer-length))))
+    (loop for e across arr do (push e (aref bucket (ldb (byte 4 (* radix 4)) e))))
     (let ((bucket-seq (coerce (reduce #'nconc bucket :key #'reverse) 'vector)))
       (if (<= max-radix radix)
         bucket-seq
         (radix-sort bucket-seq (1+ radix) max-radix)))))
+
+;;8,堆排序
+(defun heap-sort (arr)
+  (labels ((heapify (seq current-index size)
+                    (let ((left (+ (* 2 current-index) 1))
+                          (right (+ (* 2 current-index) 2))
+                          (max current-index))
+                      (if (and (< left size) (> (elt arr left) (elt arr max))) (setf max left))
+                      (if (and (< right size) (> (elt arr right) (elt arr max))) (setf max right))
+                      (when (/= current-index max)
+                        (rotatef (elt arr max) (elt arr current-index))
+                        (heapify arr max size)))))
+    (dotimes (i (length arr) arr)
+      (let ((max-size (- (length arr) i)))
+        (loop for j from (1- max-size) downto 0
+              do (heapify arr j max-size))
+        (rotatef (elt arr 0) (elt arr (1- max-size)))))))
