@@ -78,7 +78,7 @@
 
 ;;7,基数排序
 (defun radix-sort (arr &optional (radix 0) (max-radix nil))
-  (let ((bucket (make-array 16))
+  (let ((bucket (make-array 16 :initial-element nil))
         (max-radix (or max-radix (reduce #'max arr :key #'integer-length))))
     (loop for e across arr do (push e (aref bucket (ldb (byte 4 (* radix 4)) e))))
     (let ((bucket-seq (coerce (reduce #'nconc bucket :key #'reverse) 'vector)))
@@ -114,3 +114,17 @@
       (if (equalp (sort (copy-seq *test-seq*) #'<) (funcall (symbol-function fun) (copy-seq *test-seq*)))
         (format t "~A test ok~%" (symbol-name fun))
         (format t "~A test failed~%" (symbol-name fun))))))
+
+(defun test-random ()
+  (let ((funs (list 'bubble-sort 'bubble-sort-2 'insert-sort 'insert-sort-2 
+                    'select-sort 'select-sort-2 'quick-sort 'heap-sort 
+                    'radix-sort 'shell-sort 'merge-sort))
+        (random-seq (coerce (loop for i from 1 to 10000 collect (random 10000)) 'vector)))
+    (dolist (fun funs)
+      (if (not (typep (symbol-function fun) 'compiled-function)) (compile fun))
+      (format t "-----------------~%test ~A ...~%" (symbol-name fun))
+      (if (equalp (sort (copy-seq random-seq) #'<) (time (funcall (symbol-function fun) (copy-seq random-seq))))
+        (format t "~A test ok~%" (symbol-name fun))
+        (format t "~A test failed~%" (symbol-name fun))))))
+
+;(test-random)
