@@ -8,9 +8,9 @@
 (defun bubble-sort-2 (arr &optional (start 0))
   (if (>= start (1- (length arr)))
     arr
-    (progn (loop for i from (1- (length arr)) above start
-                      do (if (< (svref arr i) (svref arr (1- i))) (rotatef (svref arr i) (svref arr (1- i)))))
-           (bubble-sort-2 arr (1+ start)))))
+    (loop for i from (1- (length arr)) above start
+          when (< (svref arr i) (svref arr (1- i))) do (rotatef (svref arr i) (svref arr (1- i)))
+          finally (return (bubble-sort-2 arr (1+ start))))))
 
 ;;2,插入排序
 (defun insert-sort (arr)
@@ -91,18 +91,17 @@
   (labels ((heapify (seq current-index size)
                     (let ((left (+ (* 2 current-index) 1))
                           (right (+ (* 2 current-index) 2))
-                          (max current-index))
-                      (if (and (< left size) (> (svref arr left) (svref arr max))) (setf max left))
-                      (if (and (< right size) (> (svref arr right) (svref arr max))) (setf max right))
-                      (when (/= current-index max)
-                        (rotatef (svref arr max) (svref arr current-index))
-                        (heapify arr max size)))))
+                          (max-index current-index))
+                      (if (and (< left size) (> (svref seq left) (svref seq max-index))) (setf max-index left))
+                      (if (and (< right size) (> (svref seq right) (svref seq max-index))) (setf max-index right))
+                      (when (/= current-index max-index)
+                        (rotatef (svref seq max-index) (svref seq current-index))
+                        (heapify seq max-index size)))))
+    (loop for j from (1- (length arr)) downto 0 do (heapify arr j (length arr)))
     (dotimes (i (length arr) arr)
       (let ((max-size (- (length arr) i)))
-        (loop for j from (1- max-size) downto 0
-              do (heapify arr j max-size))
-        (rotatef (svref arr 0) (svref arr (1- max-size)))))))
-
+        (rotatef (svref arr 0) (svref arr (1- max-size)))
+        (heapify arr 0 max-size)))))
 
 (defvar *test-seq* #(1 4 0 2 3 8 5 3 33 77 88 9 11))
 
