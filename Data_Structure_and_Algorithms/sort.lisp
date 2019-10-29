@@ -97,11 +97,11 @@
                       (when (/= current-index max-index)
                         (rotatef (svref seq max-index) (svref seq current-index))
                         (heapify seq max-index size)))))
-    (loop for j from (1- (length arr)) downto 0 do (heapify arr j (length arr)))
-    (dotimes (i (length arr) arr)
-      (let ((max-size (- (length arr) i)))
-        (rotatef (svref arr 0) (svref arr (1- max-size)))
-        (heapify arr 0 max-size)))))
+    (loop for i from (1- (floor (length arr) 2)) downto 0 do (heapify arr i (length arr)))
+    (loop for j from (1- (length arr)) above 0 
+          do (progn (rotatef (svref arr 0) (svref arr j))
+                    (heapify arr 0 j))
+          finally (return arr))))
 
 (defvar *test-seq* #(1 4 0 2 3 8 5 3 33 77 88 9 11))
 
