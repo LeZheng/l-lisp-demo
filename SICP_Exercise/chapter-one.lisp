@@ -33,7 +33,9 @@
 (defun a-plus-abs-b (a b)
   (funcall (if (> b 0) #'+ #'-) a b)) ;; => a 加上 b 的绝对值
 
-;;;exercise 1.5 ?? TODO
+;;;exercise 1.5
+;如果是应用序求值，test调用前对 (p) 求值会进入死循环
+;如果是正则序求值，则返回0，这个过程中 (p) 没有被求值
 
 ;;;example 1.1.7
 (defun good-enough? (guess x)
@@ -42,7 +44,7 @@
 (defun sqrt-iter (guess x)
   (if (good-enough? guess x)
     guess
-    (sqrt-iter (/ (+ guess (/ x guess)) 2)
+    (sqrt-iter (float (/ (+ guess (/ x guess)) 2))
                x)))
 
 (defun my-sqrt (x)
@@ -51,8 +53,9 @@
 ;;;exercise 1.6
 ;;cond 是应用序求值的情况下,new-if调用展开前then和else子句都会先求值
 
-;;;exercise 1.7 TODO
+;;;exercise 1.7
 (defun sqrt-iter-x (guess x &optional (last-guess 0))
+  (format t "~A~%" guess)
   (if (< (abs (- guess last-guess)) 0.001)
     guess
     (sqrt-iter-x (float (/ (+ guess (/ x guess)) 2))
@@ -60,6 +63,9 @@
                  guess)))
 (defun my-sqrt-x (x)
   (sqrt-iter-x 1 x))
+;过小的数不能检测，例如：(my-sqrt 0.00000000000001)
+;过大的数不能检测，例如: (my-sqrt 1000000001)
+;my-sqrt-x 可以，TODO 待检验
 
 ;;;exercise 1.8
 (defun good-enough?3 (guess x)
