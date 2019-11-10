@@ -81,6 +81,20 @@
   (cube-iter 1 x))
 
 ;;;exercise 1.9
+; (+ 4 5)
+; (inc (+ 3 5))
+; (inc (inc (+ 2 5)))
+; (inc (inc (inc (+ 1 5))))
+; (inc (inc (inc (inc (+ 0 5)))))
+; (inc (inc (inc (inc 5))))
+; ...
+
+; (+ 4 5)
+; (+ 3 6)
+; (+ 2 7)
+; (+ 1 8)
+; (+ 0 9)
+; 9
 ;;第一个加法是递归，第二个加法是迭代
 
 ;;;exercise 1.10
@@ -119,4 +133,6 @@
         ((= n 2) (+ x y))
         (t (fib (- n 1) y (+ x y)))))
 
+;;;exercise 1.14 TODO 
 
+;;;exercise 1.15 TODO
