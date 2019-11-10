@@ -1,16 +1,15 @@
-(defun kmp-match (str p &optional (start 0) (next nil))
-  (if (or (= (length p) 0) (> start (- (length str) (length p))))
-    nil
-    (let ((next-array (or next (loop for i from 2 below (length p) ;TODO 这里的2存在问题
-                                     with arr = (make-array (length p) :fill-pointer 2 :initial-element 0)
-                                     do (vector-push (if (equal (char p (1- i)) (char p (aref arr (1- i)))) 
-                                                       (1+ (aref arr (1- i))) 
-                                                       0)
-                                                arr)
-                          finally (return arr)))))
-      (loop for i from start below (length str)
-            and c across p
-            until (not (equal c (char str i)))
-            finally (if (>= (- i start)  (length p))
-                      (return start)
-                      (return (kmp-match str p (+ start (1+ (aref next-array (- i start)))) next-array)))))))
+(defun index-kmp (str p)
+  (let ((next (loop for i from 1 below (length p)
+                    with arr = (make-array (length p) :initial-element 0)
+                    with j = 0
+                    do (cond 
+                         ((= i 1) (setf (aref arr i) 1))
+                         ((equal (elt p (1- i)) (elt p j)) (psetf j (1+ j) (aref arr i) (1+ (aref arr (1- i)))))
+                         (t (setf j 0 (aref arr i) 1)))
+                    finally (return arr))))
+    (loop with i = 0 and j = 0
+          while (and (< i (length str)) (< j (length next)))
+          when (equal (elt str i) (elt p j)) do (if (= j (1- (length next))) 
+                                                    (return (- i j)) 
+                                                    (progn (incf i) (incf j)))
+          else do (setf i (1+ i) j (max 0 (1- (aref next j)))))))
