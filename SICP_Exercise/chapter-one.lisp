@@ -133,6 +133,50 @@
         ((= n 2) (+ x y))
         (t (fib (- n 1) y (+ x y)))))
 
-;;;exercise 1.14 TODO 
+;;;exercise 1.14
+(defun count-change (amount)
+  (labels ((cc (rest-amount kinds-of-coins)
+               (format t "cc ~A ~A~%" rest-amount kinds-of-coins)
+               (cond ((= rest-amount 0) 1)
+                     ((or (< rest-amount 0) (= kinds-of-coins 0)) 0)
+                     (t (+ (cc rest-amount (1- kinds-of-coins))
+                           (cc 
+                             (- rest-amount (case kinds-of-coins 
+                                         (1 1)
+                                         (2 5)
+                                         (3 10)
+                                         (4 25)
+                                         (t 50)))
+                             kinds-of-coins))))))
+    (cc amount 5)))
+;(cc 11 5)
+;(cc 11 4) (cc -39 5)
+;(cc 11 3) (cc -14 4) 0
+;(cc 11 2) (cc 1 3) 0
+;(cc 11 1) (cc 6 2) (cc 1 2) (cc -9 3)
+;(cc 11 0) (cc 10 1) (cc 6 1) (cc 1 2) (cc 1 1) (cc -4 2) 0
+;0 (cc 10 0) (cc 9 1) (cc 6 0) (cc 5 1) (cc 1 1) (cc -4 2) (cc 1 0) (cc 0 1) 0
+;0 (cc 9 0) (cc 8 1) 0 (cc 5 0) (cc 4 1) (cc 1 0) (cc 0 1) 0 0 1
+;0 (cc 8 0) (cc 7 1) 0 (cc 4 0) (cc 3 1) 0 1 1
+;0 (cc 7 0) (cc 6 1) 0 (cc 3 0) (cc 2 1) 1 1
+;0 (cc 6 0) (cc 5 1) 0 (cc 2 0) (cc 1 1) 1 1
+;0 (cc 5 0) (cc 4 1) 0 (cc 1 0) (cc 0 1) 1 1
+;0 (cc 4 0) (cc 3 1) 0 1 1 1
+;0 (cc 3 0) (cc 2 1) 1 1 1
+;0 (cc 2 0) (cc 1 1) 1 1 1
+;0 (cc 1 0) (cc 0 1) 1 1 1
+;0 1 1 1 1
+;4
 
-;;;exercise 1.15 TODO
+;空间 TODO
+;增长的阶 TODO
+
+;;;exercise 1.15
+(defun sine (angle)
+  (flet ((p (x) (print "p...") (- (* 3 x) (* 4 x x x))))
+    (if (not (> (abs angle) 0.1))
+      angle
+      (p (sine (/ angle 3.0))))))
+
+;a) p 被使用了5次
+;b) 增长的阶都是 O(log a)
