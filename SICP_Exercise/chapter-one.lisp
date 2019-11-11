@@ -179,3 +179,40 @@
 
 ;a) p 被使用了5次
 ;b) 增长的阶都是 O(log a)
+
+;;;exercise 1.16
+(defun fast-expt-iter (b n &optional (a 1))
+  (cond ((= n 0) a)
+        ((evenp n) (fast-expt-iter (* b b) (/ n 2) a))
+        (t (fast-expt-iter b (1- n) (* a b)))))
+
+;;;exercise 1.17
+(defun fast-* (a b)
+  (labels ((double (x) (* x 2))
+           (halve (x) (/ x 2)))
+    (cond ((= b 1) a)
+          ((= b 0) 0)
+          ((evenp b) (fast-* (double a) (halve b)))
+          (t (+ a (fast-* a (1- b)))))))
+
+;;;exercise 1.18
+(defun fast-*-2 (a b &optional (product 0))
+  (labels ((double (x) (* x 2))
+           (halve (x) (/ x 2)))
+    (cond ((= b 1) (+ a product))
+          ((= b 0) product)
+          ((evenp b) (fast-*-2 (double a) (halve b) product))
+          (t (fast-*-2 a (1- b) (+ a product))))))
+
+;;;exercise 1.19
+(defun fib-19 (n &optional (a 1) (b 0) (p 0) (q 1))
+  (cond ((= n 0) b)
+        ((evenp n) (fib-19 (/ n 2) 
+                           a
+                           b
+                           (+ (* p p) (* q q)) 
+                           (+ (* 2 p q) (* q q))))
+        (t (fib-19 (1- n) 
+                   (+ (* b q) (* a q) (* a p))
+                   (+ (* b p) (* a q))
+                   p q))))
