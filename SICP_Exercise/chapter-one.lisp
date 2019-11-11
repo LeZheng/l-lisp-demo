@@ -136,7 +136,6 @@
 ;;;exercise 1.14
 (defun count-change (amount)
   (labels ((cc (rest-amount kinds-of-coins)
-               (format t "cc ~A ~A~%" rest-amount kinds-of-coins)
                (cond ((= rest-amount 0) 1)
                      ((or (< rest-amount 0) (= kinds-of-coins 0)) 0)
                      (t (+ (cc rest-amount (1- kinds-of-coins))
@@ -173,7 +172,7 @@
 
 ;;;exercise 1.15
 (defun sine (angle)
-  (flet ((p (x) (print "p...") (- (* 3 x) (* 4 x x x))))
+  (flet ((p (x) (- (* 3 x) (* 4 x x x))))
     (if (not (> (abs angle) 0.1))
       angle
       (p (sine (/ angle 3.0))))))
