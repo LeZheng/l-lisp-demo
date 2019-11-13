@@ -216,3 +216,23 @@
                    (+ (* b q) (* a q) (* a p))
                    (+ (* b p) (* a q))
                    p q))))
+
+;;;exercise 1.20
+(defun my-gcd (a b)
+  (if (= b 0)
+    a
+    (my-gcd b (rem a b))))
+
+;;1.正则序
+; (my-gcd 206 40)
+; (my-gcd 40 (rem 206 40))
+; (if (= (rem 206 40) 0) 40 (my-gcd 40 (rem 40 (rem 206 40))))TODO
+
+
+;;2.应用序
+; (my-gcd 206 40)
+; (my-gcd 40 6)
+; (my-gcd 6 4)
+; (my-gcd 4 2)
+; (my-gcd 2 0)
+; 执行四次 rem 操作
