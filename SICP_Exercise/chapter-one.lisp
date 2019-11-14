@@ -236,3 +236,50 @@
 ; (my-gcd 4 2)
 ; (my-gcd 2 0)
 ; 执行四次 rem 操作
+
+;;; exercise 1.21
+(defun prime? (n)
+  (= n (smallest-divisor n)))
+
+(defun find-divisor (n test-divisor)
+  (cond ((> (expt test-divisor 2) n) n)
+        ((= (rem n test-divisor) 0) test-divisor)
+        (t (find-divisor n (1+ test-divisor)))))
+
+(defun smallest-divisor (n)
+  (find-divisor n 2))
+; 199 => 199
+; 1999 => 1999
+; 19999 => 19999
+
+;;; exercise 1.22
+(defun timed-prime-test (n)
+  (format t "~%~A" n)
+  (start-prime-test n (get-internal-real-time)))
+
+(defun start-prime-test (n start-time)
+  (if (prime? n)
+    (progn (report-prime (- (get-internal-real-time) start-time)) n)
+    nil))
+
+(defun report-prime (elapsed-time)
+  (format t " *** ~A" elapsed-time))
+
+(defun search-for-primes (min-value)
+  (loop for i from min-value 
+        with c = 0 
+        when (timed-prime-test i) do (incf c) until (= c 3)))
+
+; 耗时并非是10的平方根，100000和1000000的情况也不是如此，时间正比于计算步数?? TODO
+
+;;; exercise 1.23
+(defun next-div (n)
+  (if (= n 2)
+    3
+    (+ n 2)))
+
+(defun find-divisor (n test-div)
+  (cond ((> (expt test-div 2) n) n)
+        ((= (rem n test-div) 0) test-div)
+        (t (find-divisor n (next-div test-div)))))
+; 事实情况并没有加快一倍，原因?? TODO
