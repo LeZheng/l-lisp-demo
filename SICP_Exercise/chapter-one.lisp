@@ -283,3 +283,37 @@
         ((= (rem n test-div) 0) test-div)
         (t (find-divisor n (next-div test-div)))))
 ; 事实情况并没有加快一倍，原因?? TODO
+
+;;; exercise 1.24
+(defun expmod (base exp m)
+  (cond ((= exp 0) 1)
+        ((evenp exp) (rem (expt (expmod base (/ exp 2) m) 2) m))
+        (t (rem (* base (expmod base (- exp 1) m)) m))))
+
+(defun fermat-test (n)
+  (let ((a (+ 1 (random (- n 1)))))
+    (= (expmod a n n) a)))
+
+(defun fast-prime? (n &optional (times 10))
+  (cond ((= times 0) t)
+        ((fermat-test n) (fast-prime? n (- times 1)))
+        (t nil)))
+
+(defun timed-prime-test-2 (n)
+  (format t "~%~A" n)
+  (start-prime-test-2 n (get-internal-real-time)))
+
+(defun start-prime-test-2 (n start-time)
+  (if (fast-prime? n)
+    (progn (report-prime (- (get-internal-real-time) start-time)) n)
+    nil))
+
+;;TODO 验证结果并解答
+
+;;;exercise 1.25 TODO
+
+;;;exercise 1.26 TODO
+
+;;;exercise 1.27 TODO
+
+;;;exercise 1.28 TODO
