@@ -317,3 +317,71 @@
 ;;;exercise 1.27 TODO
 
 ;;;exercise 1.28 TODO
+
+;;;exercise 1.29 TODO 
+
+;;;exercise 1.30
+(defun my-sum (term a next b)
+  (labels ((iter (a result)
+                 (if (> a b)
+                   result
+                   (iter (funcall next a) (+ result (funcall term a))))))
+    (iter a 0)))
+
+;;;exercise 1.31
+(defun my-product (term a next b)
+  (labels ((iter (a result)
+                 (if (> a b)
+                   result
+                   (iter (funcall next a) (* result (funcall term a))))))
+    (iter a 1)))
+
+(defun my-product-2 (term a next b)
+  (if (> a b)
+    1
+    (* (funcall term a) (my-product-2 term (funcall next a) next b))))
+
+(defun factorial (n)
+  (my-product #'identity 1 #'1+ n))
+
+(defun cal-pi ()
+  (float (* 4 (my-product 
+                (lambda (n) (/ (* n (+ n 2)) (expt (1+ n) 2))) 
+                2 
+                (lambda (n) (+ n 2)) 
+                1000))))
+
+;;exercise 1.32
+(defun accumulate-1 (combiner null-value term a next b)
+  (if (> a b)
+    null-value
+    (funcall combiner 
+             (funcall term a) 
+             (accumulate-1 combiner null-value term (funcall next a) next b))))
+
+(defun acc-sum (term a next b)
+  (accumulate-1 #'+ 0 term a next b))
+
+(defun acc-product (term a next b)
+  (accumulate-1 #'* 1 term a next b))
+
+(defun accumulate-2 (combiner null-value term a next b)
+  (labels ((iter (a result)
+                 (if (> a b)
+                   result
+                   (iter (funcall next a)
+                            (funcall combiner result (funcall term a))))))
+    (iter a null-value)))
+
+;;;exercise 1.33
+(defun filtered-accumulate (combiner null-value predicte term a next b)
+  (if (> a b)
+    null-value
+    (if (funcall predicte (funcall term a))
+      (funcall combiner 
+               (funcall term a)
+               (filtered-accumulate combiner null-value predicte term (funcall next a) next b))
+      (filtered-accumulate combiner null-value predicte term (funcall next a) next b))))
+
+(defun acc-prime (a b)
+  (filtered-accumulate #'+ 0 #'prime? #'identity a #'1+ b))
