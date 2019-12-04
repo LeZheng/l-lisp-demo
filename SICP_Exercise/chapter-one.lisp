@@ -385,3 +385,6 @@
 
 (defun acc-prime (a b)
   (filtered-accumulate #'+ 0 #'prime? #'identity a #'1+ b))
+
+;;;exercise 1.34
+; 最后出现(2 2) 调用，而2不是一个过程，因此出错
