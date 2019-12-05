@@ -388,3 +388,60 @@
 
 ;;;exercise 1.34
 ; 最后出现(2 2) 调用，而2不是一个过程，因此出错
+
+;;;exercise 1.35
+(defun fixed-point (f first-guess)
+  (labels ((close-enough? (v1 v2)
+                          (< (abs (- v1 v2)) 0.00001))
+           (try (guess)
+                (let ((next (funcall f guess)))
+                  (if (close-enough? guess next)
+                    next
+                    (try next)))))
+    (try first-guess)))
+;(fixed-point (lambda (x) (+ 1 (/ 1 x))) 1.0) => 1.6180328
+
+;;;exercise 1.36
+(defun fixed-point-2 (f first-guess)
+  (labels ((close-enough? (v1 v2)
+                          (< (abs (- v1 v2)) 0.00001))
+           (try (guess)
+                (format t "guess: ~A~%" guess)
+                (let ((next (funcall f guess)))
+                  (if (close-enough? guess next)
+                    next
+                    (try next)))))
+    (try first-guess)))
+;使用平均阻尼前后计算步数大概是 4:1
+
+;;;exercise 1.37
+(defun cont-frac (n d k &optional (i 1))
+  (if (< i k)
+    (/ (funcall n i) (+ (funcall d i) (cont-frac n d k (1+ i))))
+    (/ (funcall n i) (funcall d i))))
+; 具有4位精度时k为11
+
+(defun cont-frac-2 (n d k)
+  (labels ((iter (r i)
+                 (if (> i 1)
+                   (iter (/ (funcall n i) (+ (funcall d i) r)) (- i 1))
+                   r)))
+    (iter (/ (funcall n k) (funcall d k)) (- k 1))))
+
+;;;exercise 1.38 TODO 结果不对
+(cont-frac-2 
+  (lambda (i) 1.0) 
+  (lambda (i) 
+    (if (< i 3) 
+      i 
+      (if (= (mod (- i 2) 3) 0)
+        (* 2 (+ 1 (/ (- i 2) 3)))
+        1))) 
+  12)
+
+;;;exercise 1.39 
+(defun tan-cf (x k)
+  (cont-frac-2 
+    (lambda (n) (if (> n 1) (* x x) x))
+    (lambda (d) (- (* d 2) 1))
+    k))
