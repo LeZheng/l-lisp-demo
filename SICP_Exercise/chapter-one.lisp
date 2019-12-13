@@ -445,3 +445,49 @@
     (lambda (n) (if (> n 1) (* x x) x))
     (lambda (d) (- (* d 2) 1))
     k))
+
+;;;exercise 1.40
+(defparameter dx 0.00001)
+
+(defun deriv (g)
+  (lambda (x) (/ (- (funcall g (+ x dx)) (funcall g x))
+                 dx)))
+
+(defun newtons-transform (g)
+  (lambda (x) (- x (/ (funcall g x) (funcall (deriv g) x)))))
+
+(defun newtons-method (g guess)
+  (fixed-point (newtons-transform g) guess))
+
+(defun cubix (a b c)
+  (lambda (x) (+ (* x x x) (* a x x) (* b x) c)))
+
+;;;exercise 1.41
+(defun double (f)
+  (lambda (x) (funcall f (funcall f x))))
+
+;(funcall (funcall (double (double #'double)) #'1+) 5) => 21
+
+;;;exercise 1.42
+(defun compose (f g)
+  (lambda (x) (funcall f (funcall g x))))
+
+;;;exercise 1.43
+(defun repeated (f n)
+  (if (> n 1)
+    (let ((cf f))
+      (dotimes (i (- n 1) cf)
+        (setf cf (compose cf f))))
+    f))
+
+;;;exercise 1.44
+(defun smooth (f)
+  (lambda (x) 
+    (/ (+ (funcall f (- x dx)) 
+          (funcall f x) 
+          (funcall f (+ x dx))) 
+       3)))
+
+;;;exercise 1.45 TODO
+
+;;;exercise 1.46 TODO
