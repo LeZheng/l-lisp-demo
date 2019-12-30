@@ -226,3 +226,82 @@
 
 ;;;exercice 2.16 TODO
 
+
+;;;; 2.2
+(defun list-ref (l n)
+  (if (= n 0)
+    (car l)
+    (list-ref (cdr l) (- n 1))))
+
+(defun my-length (l)
+  (labels ((iter (l c)
+                 (if (null l)
+                   c
+                   (iter (cdr l) (1+ c)))))
+    (iter l 0)))
+
+(defun my-append (l1 l2)
+  (if (null l1)
+    l2
+    (cons (car l1) (my-append (cdr l1) l2))))
+
+;;;exercice 2.17
+(defun last-pair (l)
+  (if (null (cdr l))
+    (car l)
+    (last-pair (cdr l))))
+
+;;;exercice 2.18
+(defun my-reverse (l)
+  (labels ((iter (l r)
+                 (if (null l)
+                   r
+                   (iter (cdr l) (cons (car l) r)))))
+    (iter l nil)))
+
+;;;exercice 2.19
+(defconstant us-coins (list 50 25 10 5 1))
+(defconstant uk-coins (list 100 50 20 10 5 2 1 0.5))
+
+(defun cc (amount coin-values)
+  (cond ((= amount 0) 1)
+        ((or (< amount 0) (no-more? coin-values)) 0)
+        (t (+ (cc amount (exception-first-denomination coin-values))
+              (cc (- amount (first-denomination coin-values))
+                  coin-values)))))
+
+(defun first-denomination (coins)
+  (car coins))
+
+(defun exception-first-denomination (coins)
+  (cdr coins))
+
+(defun no-more? (coins)
+  (null coins))
+; 调换顺序不影响，因为这个程序在枚举所有币种的组合
+
+;;;exercice 2.20
+(defun same-parity (&rest nums)
+  (cond ((null nums) nil)
+        (t (let ((first-odd? (oddp (first nums))) (result '()))
+             (dolist (num (reverse nums) result);TODO dolist
+               (if (equal first-odd? (oddp num))
+                 (push num result)))))))
+
+;;;exercice 2,21
+(defun square-list (items)
+  (if (null items)
+    nil
+    (cons (expt (car items) 2) (square-list (cdr items)))))
+
+(defun square-list (items)
+  (mapcar (lambda (x) (expt x 2)) items))
+
+;;;exercice 2.22
+; cons 的构造决定了
+
+;;;exercice 2.23
+(defun for-each (proc items)
+  (when (not (null items))
+    (funcall proc (car items))
+    (for-each proc (cdr items))))
