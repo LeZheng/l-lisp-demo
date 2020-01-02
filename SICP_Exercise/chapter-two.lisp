@@ -260,8 +260,8 @@
     (iter l nil)))
 
 ;;;exercice 2.19
-(defconstant us-coins (list 50 25 10 5 1))
-(defconstant uk-coins (list 100 50 20 10 5 2 1 0.5))
+(defvar us-coins (list 50 25 10 5 1))
+(defvar uk-coins (list 100 50 20 10 5 2 1 0.5))
 
 (defun cc (amount coin-values)
   (cond ((= amount 0) 1)
@@ -305,3 +305,129 @@
   (when (not (null items))
     (funcall proc (car items))
     (for-each proc (cdr items))))
+
+;;;; 2.2.2
+(defun count-leaves (tree)
+  (cond 
+    ((null tree) 0)
+    ((atom tree) 1)
+    (t (+ (count-leaves (car tree)) (count-leaves (cdr tree))))))
+
+;;;exercice 2.24 
+;略
+
+;;;exercice 2.25
+(car (cdr (car (cdr (cdr '(1 3 (5 7) 9))))))
+(car (car '((7))))
+(car (cdr (car (cdr (car (cdr (car (cdr (car (cdr (car (cdr '(1 (2 (3 (4 (5 (6 7))))))))))))))))))
+
+;;;exercice 2.26
+(setf x (list 1 2 3))
+(setf y (list 4 5 6))
+(append x y) ; => (1 2 3 4 5 6)
+(cons x y) ; => ((1 2 3) 4 5 6)
+(list x y) ; => ((1 2 3) (4 5 6))
+
+;;;exercice 2.27
+(defun deep-reverse (tree)
+  (labels ((iter (l r)
+                 (cond 
+                   ((null l) r)
+                   ((atom l) l)
+                   (t (iter (cdr l) (cons (iter (car l) nil) r))))))
+    (iter tree nil)))
+
+;;;exercice 2.28
+(defun fringe (tree)
+  (cond
+    ((null tree) nil)
+    ((atom tree) (list tree))
+    (t (labels ((iter (l r)
+                      (cond
+                        ((null l) r)
+                        (t (iter (cdr l) (append r (fringe (car l))))))))
+         (iter tree nil)))))
+
+;;;exercice 2.29
+(defun make-mobile (left right)
+  (list left right))
+
+(defun make-branch (length struct)
+  (list length struct))
+
+(defun left-branch (mobile)
+  (first mobile))
+
+(defun right-branch (mobile)
+  (second mobile))
+
+(defun branch-length (branch)
+  (first branch))
+
+(defun branch-struct (branch)
+  (second branch))
+
+(defun total-weight (mobile)
+  (labels ((branch-weight (branch)
+                          (if (numberp (branch-struct branch))
+                            (branch-struct branch)
+                            (total-weight (branch-struct branch)))))
+    (+ (branch-weight (left-branch mobile))
+       (branch-weight (right-branch mobile)))))
+
+(defun balancep (mobile)
+  (and
+    (= (* (branch-length (left-branch mobile)) (total-weight (left-branch mobile)))
+       (* (branch-length (right-branch mobile)) (total-weight (right-branch mobile))))
+    (or (numberp (branch-struct (left-branch mobile)))
+        (balancep (branch-struct (left-branch mobile))))
+    (or (numberp (branch-struct (right-branch mobile)))
+        (balancep (branch-struct (right-branch))))))
+
+(defun make-mobile (left right)
+  (cons left right))
+
+(defun make-branch (length struct)
+  (cons length struct))
+
+(defun left-branch (mobile)
+  (car mobile))
+
+(defun right-branch (mobile)
+  (cdr mobile))
+
+(defun branch-length (branch)
+  (car branch))
+
+(defun branch-struct (branch)
+  (cdr branch))
+
+;;;exercice 2.30
+(defun square-tree (tree)
+  (cond
+    ((null tree) nil)
+    ((atom tree) (expt tree 2))
+    (t (cons (square-tree (car tree))
+             (square-tree (cdr tree))))))
+
+(defun square-tree (tree)
+  (mapcar (lambda (sub-tree)
+            (if (atom sub-tree)
+              (expt sub-tree 2)
+              (square-tree sub-tree)))
+          tree))
+
+;;;exercice 2.31
+(defun tree-map (tree operator)
+  (cond
+    ((null tree) nil)
+    ((atom tree) (funcall operator tree))
+    (t (cons (tree-map (car tree) operator)
+             (tree-map (cdr tree) operator)))))
+
+;;;exercice 2.32
+(defun subsets (s)
+  (if (null s)
+    (list nil)
+    (let ((rest (subsets (cdr s))))
+      (append rest (mapcar (lambda (x) (cons (car s) x)) rest)))))
