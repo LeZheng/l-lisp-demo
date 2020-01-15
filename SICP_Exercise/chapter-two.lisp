@@ -431,3 +431,194 @@
     (list nil)
     (let ((rest (subsets (cdr s))))
       (append rest (mapcar (lambda (x) (cons (car s) x)) rest)))))
+
+;;;; 2.2.3
+(defun filter (predicate seq)
+  (cond 
+    ((null seq) nil)
+    ((funcall predicate (car seq)) (cons (car seq) (filter predicate (cdr seq))))
+    (t (filter predicate (cdr seq)))))
+
+(defun accumulate (op initial sequence)
+  (if (null sequence)
+    initial
+    (funcall op (car sequence) (accumulate op initial (cdr sequence)))))
+
+;;;exercice 2.33
+(defun my-map (p seq)
+  (accumulate (lambda (x y) (cons (funcall p x) y)) nil seq))
+
+(defun my-append (seq1 seq2)
+  (accumulate #'cons seq2 seq1))
+
+(defun my-length (seq)
+  (accumulate (lambda (x y) (1+ y))  0 seq))
+
+;;;exercice 2.34
+(defun horner-eval (x seq)
+  (accumulate (lambda (this-coeff higher-terms) (+ (* x higher-terms) this-coeff))
+              0
+              seq))
+
+;;;exercice 2.35
+(defun count-leaves (tree)
+  (accumulate 
+    (lambda (x y) (+ x y)) 
+    0 
+    (my-map (lambda (x) 
+              (if (atom x)
+                1
+                (count-leaves x))) 
+            tree)))
+
+;;;exercice 2.36
+(defun accumulate-n (op initial seqs)
+  (if (null (car seqs))
+    nil
+    (cons (accumulate op initial (my-map #'car seqs))
+          (accumulate-n op initial (my-map #'cdr seqs)))))
+
+;;;exercice 2.37 TODO 未消化
+(defun dot-product (v w)
+  (accumulate #'+ 0 (my-map #'* v w)))
+
+(defun matrix-*-vector (m v)
+  (my-map (lambda (col) (dot-product col v)) m))
+
+(defun transpose (m)
+  (accumulate-n #'cons '() m))
+
+(defun matrix-*-matrix (m n)
+  (let ((trans-n (transpose n)))
+    (my-map (lambda (col-of-m)
+              (matrix-*-vector trans-n col-of-m))
+            m)))
+
+;;;exercice 2.38
+(defun fold-left (op initial seq)
+  (labels ((iter (result rest)
+                 (if (null rest)
+                   result
+                   (iter (funcall op result (car rest))
+                         (cdr rest)))))
+    (iter initial seq)))
+
+(defun fold-right (op initial sequence)
+  (if (null sequence)
+    initial
+    (funcall op (car sequence) (fold-right op initial (cdr sequence)))))
+
+(fold-right #'/ 1 (list 1 2 3)) ;=> 3/2
+
+(fold-left #'/ 1 (list 1 2 3))  ;=> 1/6
+
+(fold-right #'list nil (list 1 2 3)) ;=>(1 (2 (3 1)))
+
+(fold-left #'list nil (list 1 2 3))  ;=>(((1 1) 2) 3)
+;;两个函数要产生一样的结果，那么op得符合结合率
+
+;;;exercice 2.39
+(defun my-reverse-1 (seq)
+  (fold-right (lambda (x y) (append y (list x))) nil seq))
+
+(defun my-reverse-2 (seq)
+  (fold-left (lambda (x y) (cons y x)) nil seq))
+
+;;;;嵌套映射
+(defun enumerate-interval (i n)
+  (if (> i n)
+    nil
+    (cons i (enumerate-interval (1+ i) n))))
+
+(defun flatmap (proc seq)
+  (accumulate #'append nil (my-map proc seq)))
+
+(load "chapter-one.lisp")
+(defun prime-sum? (pair)
+  (prime? (+ (car pair) (cadr pair))))
+
+(defun make-pair-sum (pair)
+  (list (car pair) (cadr pair) (+ (car pair) (cadr pair))))
+
+(defun prime-pair-sum (n)
+  (my-map #'make-pair-sum
+          (filter #'prime-sum?
+                  (flatmap (lambda (i)
+                             (my-map (lambda (j) (list i j))
+                                  (enumerate-interval 1 (- i 1))))
+                           (enumerate-interval 1 n)))))
+
+(defun permutations (s)
+  (if (null s)
+    (list nil)
+    (flatmap (lambda (x)
+               (my-map (lambda (p) (cons x p)) (permutations (remove x s))))
+             s)))
+
+;;;exercice 2.40
+(defun unique-pairs (n)
+  (flatmap (lambda (x) 
+             (my-map (lambda (i) (list x i))
+                     (enumerate-interval 1 (- x 1))))
+           (enumerate-interval 1 n)))
+
+(defun prime-pair-sum (n)
+  (my-map #'make-pair-sum
+          (filter #'prime-sum?
+                  (unique-pairs n))))
+
+;;;exercice 2.41
+(defun unique-triple (n)
+  (flatmap (lambda (x)
+             (my-map (lambda (i) (cons x i))
+                     (unique-pairs (- x 1))))
+           (enumerate-interval 1 n)))
+
+(defun enum-3-tuple (n s &optional (index 0))
+  (filter (lambda (a) (= s (+ (first a) (second a) (third a))))
+          (unique-triple n)))
+
+;;;exercice 2.42
+(defvar empty-board '())
+
+(defun adjoin-position (new-row k rest-of-queens)
+  (if (null rest-of-queens)
+    (list new-row)
+    (append rest-of-queens (list new-row))))
+
+(defun safe? (k positions)
+  (let ((x (elt positions (1- k))))
+    (dotimes (i (length positions))
+      (if (and (/= i (1- k)) (equal x (elt positions i)))
+        (return-from safe? nil)))
+    t))
+
+(defun queens (board-size)
+  (labels ((queen-cols (k)
+                       (if (= k 0)
+                         (list empty-board)
+                         (filter
+                           (lambda (pos) (safe? k pos))
+                           (flatmap 
+                             (lambda (rest-of-queens)
+                               (my-map (lambda (new-row)
+                                         (adjoin-position new-row k rest-of-queens))
+                                       (enumerate-interval 1 board-size)))
+                             (queen-cols (- k 1)))))))
+    (queen-cols board-size)))
+
+;;;exercice 2.43
+(defun queens (board-size)
+  (labels ((queen-cols (k)
+                       (if (= k 0)
+                         (list empty-board)
+                         (filter
+                           (lambda (pos) (safe? k pos))
+                           (flatmap
+                             (lambda (new-row)
+                               (format t "~A~%" new-row)
+                               (my-map (lambda (rest-of-queens)
+                                         (adjoin-position new-row k rest-of-queens))
+                                       (queen-cols (- k 1))))
+                             (enumerate-interval 1 board-size))))))
+    (queen-cols board-size)))
