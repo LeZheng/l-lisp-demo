@@ -622,3 +622,256 @@
                                        (queen-cols (- k 1))))
                              (enumerate-interval 1 board-size))))))
     (queen-cols board-size)))
+
+
+;;;;example 2.2.4
+(defun transform-painter (painter origin corner1 corner2)
+  (lambda (frame)
+    (let ((m (frame-coord-map frame)))
+      (let ((new-origin (m origin)))
+        (funcall painter 
+                 (make-frame new-origin
+                             (sub-vert (funcall m corner1) new-origin)
+                             (sub-vert (funcall m corner2) new origin)))))))
+
+(defun beside (p1 p2)
+  (let ((split-point (make-vert 0.5 0.0)))
+    (let ((paint-left (transform-painter p1 (make-vert 0.0 0.0) split-point (make-vert 0.0 1.0)))
+          (paint-right (transform-painter p2 split-point (make-vert 1.0 0.0) (make-vert 0.5 1.0))))
+      (lambda (frame)
+        (funcall paint-left frame)
+        (funcall paint-right frame)))))
+
+(defun below (p1 p2))   ;not implement
+
+(defun flip-vert (painter)
+  (transform-painter painter
+                     (make-vert 0.0 1.0)
+                     (make-vert 1.0 1.0)
+                     (make-vert 0.0 0.0)))
+(defun flip-horiz (painter)
+  (transform-painter painter
+                     (make-vert 1.0 0.0)
+                     (make-vert 0.0 0.0)
+                     (make-vert 1.0 1.0)))
+
+;;;exercice 2.44
+(defun right-split (painter n)
+  (if (= n 0)
+    painter
+    (let ((smaller (right-split painter (- n 1))))
+      (beside painter (below smaller smaller)))))
+
+(defun up-split (painter n)
+  (if (= n 0)
+    painter
+    (let ((smaller (up-split painter (- n 1))))
+      (below painter (beside smaller smaller)))))
+
+(defun corner-split (painter n)
+  (if (= n 0)
+    painter
+    (let ((up (up-split painter (- n 1)))
+          (right (right-split painter (- n 1))))
+      (let ((top-left (beside up up))
+            (bottom-right (below right right))
+            (corner (corner-split painter (- n 1))))
+        (beside (below painter top-left)
+                (below bottom-right corner))))))
+
+(defun square-of-four (tl tr bl br)
+  (lambda (painter)
+    (let ((top (beside (funcall tl painter) (funcall tr painter)))
+          (bottom (beside (funcall bl painter) (funcall br painter))))
+      (below top bottom))))
+
+(defun flipped-pairs (painter)
+  (let ((combine4 (square-of-four #'identity #'flip-vert
+                                  #'identity #'flip-vert)))
+    (funcall combine4 painter)))
+
+(defun rotate180 (painter)
+  (flip-vert (flip-horiz painter)))
+
+(defun squire-limit (painter n)
+  (let ((combine4 (square-of-four #'flip-horiz #'identity
+                                  #'rotate180 #'flip-vert)))
+    (funcall combine4 (corner-split painter n))))
+
+;;;exercice 2.45
+(defun split (split-op combine-op)
+  (labels ((new-split (painter n)
+                      (if (= n 0)
+                        painter
+                        (let ((smaller (new-split painter (- n 1))))
+                          (combine-op painter (split-op smaller smaller))))))))
+
+(defun right-split ()
+  (split #'beside #'below))
+
+(defun up-split ()
+  (split #'below #'beside))
+
+;;;exercice 2.46
+(defun frame-coord-map (frame)
+  (lambda (v)
+    (add-vert
+      (origin-frame frame)
+      (add-vert (scale-vert (xcor-vert v)
+                            (edge1-frame frame))
+                (scale-vert (ycor-vert v)
+                            (edge2-frame frame))))))
+
+(defun make-vert (x y)
+  (cons x y))
+
+(defun xcor-vert (v)
+  (car v))
+
+(defun ycor-vert (v)
+  (cdr v))
+
+(defun add-vert (v1 v2)
+  (make-vert (+ (xcor-vert v1) (xcor-vert v2))
+             (+ (ycor-vert v1) (ycor-vert v2))))
+
+(defun sub-vert (v1 v2)
+  (make-vert (- (xcor-vert v1) (xcor-vert v2))
+             (- (ycor-vert v1) (ycor-vert v2))))
+
+(defun scale-vert (v s)
+  (make-vert (* s (xcor-vert v)) (* (ycor-vert v))))
+
+;;;exercice 2.47
+(defun make-frame (origin edge1 edge2)
+  (list origin edge1 edge2))
+
+(defun origin-frame (f)
+  (first f))
+
+(defun origin-frame (f)
+  (second f))
+
+(defun origin-frame (f)
+  (third f))
+
+(defun make-frame (origin edge1 edge2)
+  (cons origin (cons edge1 edge2)))
+
+(defun origin-frame (f)
+  (car f))
+
+(defun edge1-frame (f)
+  (cadr f))
+
+(defun edge2-frame (f)
+  (caddr f))
+
+;;;exercice 2.48
+(defun make-segment (start-v end-v)
+  (cons start-v end-v))
+
+(defun start-segment (s)
+  (car s))
+
+(defun end-segment (s)
+  (cdr s))
+
+;;;exercice 2.49
+(defun draw-line ())    ;not implement
+(defun segment->painter (segment-list)
+  (lambda (frame)
+    (mapcar
+      (lambda (segment)
+        (draw-line
+          (funcall (frame-coord-map frame) (start-segment segment))
+          (funcall (frame-coord-map frame) (end-segment segment))))
+      segment-list)))
+
+(defun draw-frame-painter ()
+  (lambda (frame)
+    (let ((segment-list 
+            (list 
+              (make-segment (make-vert 0 0) 
+                            (sub-vert (edge1-frame frame) (origin-frame frame)))
+              (make-segment (make-vert 0 0)
+                            (sub-vert (edge2-frame frame) (origin-frame frame)))
+              (make-segment (sub-vert (edge1-frame frame) (origin-frame frame))
+                            (sub-vert 
+                              (add-vert (edge1-frame frame) (edge2-frame frame)) 
+                              (origin-frame frame)))
+              (make-segment (sub-vert (edge2-frame frame) (origin-frame frame))
+                            (sub-vert 
+                              (add-vert (edge1-frame frame) (edge2-frame frame))
+                              (origin-frame frame))))))
+      (funcall (segment->painter segment-list) frame))))
+
+(defun draw-opposite-angle-painter ()
+  (lambda (frame)
+    (let ((segment-list 
+            (list (make-segment (make-vert 0 0)
+                                (sub-vert 
+                                  (add-vert (edge1-frame frame) (edge2-frame frame))
+                                  (origin-frame frame)))
+                  (make-segment (edge1-frame frame)
+                                (edge2-frame frame)))))
+      (funcall (segment->painter segment-list) frame))))
+
+(defun draw-middle-point-painter ()
+  (lambda (frame)
+    (let ((segment-list
+            (list (make-segment (scale-vert (sub-vert (edge1-frame frame) (origin-frame frame)) 0.5)
+                                (scale-vert (sub-vert (edge2-frame frame) (origin-frame frame)) 0.5))
+                  (make-segment (scale-vert (sub-vert (edge1-frame frame) (origin-frame frame)) 0.5)
+                                (sub-vert (add-vert (edge1-frame frame) 
+                                                    (scale-vert (sub-vert (edge2-frame frame)) 0.5)) 
+                                          (origin-frame frame)))
+                  (make-segment (scale-vert (sub-vert (edge2-frame frame) (origin-frame frame)) 0.5)
+                                (sub-vert (add-vert (edge2-frame frame)
+                                                    (scale-vert (sub-vert (edge1-frame frame)) 0.5))
+                                          (origin-frame frame)))
+                  (make-segment (sub-vert (add-vert (edge1-frame frame) 
+                                                    (scale-vert (sub-vert (edge2-frame frame)) 0.5)) 
+                                          (origin-frame frame))
+                                (sub-vert (add-vert (edge2-frame frame)
+                                                    (scale-vert (sub-vert (edge1-frame frame)) 0.5))
+                                          (origin-frame frame))))))
+      (funcall (segment->painter segment-list) frame))))
+
+(defun draw-wave-painter ()
+  );not implement
+
+;;;exercice 2.50
+;flip-horiz 见上方
+(defun rotate180 (painter)
+  (transform-painter painter
+                     (make-vert 1.0 1.0)
+                     (make-vert 0.0 1.0)
+                     (make-vert 1.0 0.0)))
+
+(defun rotate270 (painter)
+  (transform-painter painter
+                     (make-vert 0.0 1.0)
+                     (make-vert 0.0 0.0)
+                     (make-vert 1.0 1.0)))
+
+;;;exercice 2.51
+(defun below (p1 p2)
+  (let ((split-point (make-vert 0.0 0.5)))
+    (let ((paint-bottom (transform-painter p1 (make-vert 0.0 0.0) (make-vert 1.0 0.0) split-point))
+          (paint-top (transform-painter p2 split-point (make-vert 1.0 0.5) (make-vert 0.0 1.0))))
+      (lambda (frame)
+        (funcall paint-top frame)
+        (funcall paint-bottom frame)))))
+
+(defun rotate90 (painter)
+  (transform-painter painter
+                     (make-vert 1.0 0.0)
+                     (make-vert 1.0 1.0)
+                     (make-vert 0.0 0.0)))
+
+(defun below (p1 p2)
+  (rotate90 (beside p1 p2)))
+
+;;;exercice 2.52
+;TODO
