@@ -875,3 +875,28 @@
 
 ;;;exercice 2.52
 ;TODO
+
+;;;exercice 2.53
+(defun memq (s symbols)
+  (cond
+    ((null symbols) nil)
+    ((equal s (car symbols)) symbols)
+    (t (memq s (cdr symbols)))))
+
+(list 'a 'b 'c) ;=> (A B C)
+(list (list 'george)) ;=> ((george))
+(cdr '((x1 x2) (y1 y2))) ;=> ((Y1 Y2))
+(cadr '((x1 x2) (y1 y2))) ;=> (Y1 Y2)
+(memq 'red '((red shoes) (blue socks))) ;=> nil
+(memq 'red '(red shoes blue socks)) ;=>(RED SHOES BLUE SOCKS) 
+
+;;;exercice 2.54
+(defun equal? (s1 s2)
+  (cond 
+    ((and (symbolp s1) (symbolp s2) (equal s1 s2)) t)
+    ((and (listp s1) (listp s2) 
+          (equal (car s1) (car s2)) (equal? (cdr s1) (cdr s2))) t)
+    (t nil)))
+
+;;;exercice 2.55
+; ''abracadabra => (quote (quote abracadabra))
