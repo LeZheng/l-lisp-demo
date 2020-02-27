@@ -900,3 +900,216 @@
 
 ;;;exercice 2.55
 ; ''abracadabra => (quote (quote abracadabra))
+
+
+;;;;exercice 2.3.2
+(defun variable? (x)
+  (symbolp x))
+
+(defun same-variable? (v1 v2)
+  (and (variable? v1) (variable? v2) (eql v1 v2)))
+
+(defun make-sum (a1 a2)
+  (list '+ a1 a2))
+
+(defun make-product (m1 m2)
+  (list '* m1 m2))
+
+(defun sum? (x)
+  (and (consp x) (eql (car x) '+)))
+
+(defun addend (s)
+  (cadr s))
+
+(defun augend (s)
+  (caddr s))
+
+(defun product? (x)
+  (and (consp x) (eql (car x) '*)))
+
+(defun multiplier (p)
+  (cadr p))
+
+(defun multiplicand (p)
+  (caddr p))
+
+(defun deriv (expr var)
+  (cond ((numberp expr) 0)
+        ((variable? expr)
+         (if (same-variable? expr var) 1 0))
+        ((sum? expr)
+         (make-sum (deriv (addend expr) var)
+                   (deriv (augend expr) var)))
+        ((product? expr)
+         (make-sum
+           (make-product (multiplier expr)
+                         (deriv (multiplicand expr) var))
+           (make-product (deriv (multiplier expr) var)
+                         (multiplicand expr))))
+        (t (error "unknown expression type -- DERIV" expr))))
+
+(defun make-sum (a1 a2)
+  (cond ((equal a1 0) a2)
+        ((equal a2 0) a1)
+        ((and (numberp a1) (numberp a2)) (+ a1 a2))
+        (t (list '+ a1 a2))))
+
+(defun make-product (a1 a2)
+  (cond ((or (equal a1 0) (equal a2 0)) 0)
+        ((equal a1 1) a2)
+        ((equal a2 1) a1)
+        ((and (numberp a1) (numberp a2)) (* a1 a2))
+        (t (list '* a1 a2))))
+
+;;;exercice 2.56
+(defun make-exponentiation (b e)
+  (cond ((equal e 0) 1)
+        ((equal e 1) b)
+        (t (list '** b e))))
+
+(defun base (expr)
+  (cadr expr))
+
+(defun exponent (expr)
+  (caddr expr))
+
+(defun exponentiation? (expr)
+  (and (consp expr) (eql (car expr) '**)))
+
+(defun deriv (expr var)
+  (cond ((numberp expr) 0)
+        ((variable? expr)
+         (if (same-variable? expr var) 1 0))
+        ((sum? expr)
+         (make-sum (deriv (addend expr) var)
+                   (deriv (augend expr) var)))
+        ((product? expr)
+         (make-sum
+           (make-product (multiplier expr)
+                         (deriv (multiplicand expr) var))
+           (make-product (deriv (multiplier expr) var)
+                         (multiplicand expr))))
+        ((exponentiation? expr)
+         (make-product 
+           (exponent expr)
+           (make-product
+             (make-exponentiation (base expr) (- (exponent expr) 1))
+             (deriv (base expr) var))))
+        (t (error "unknown expression type -- DERIV" expr))))
+
+;;;exercice 2.57
+(defun make-sum (&rest as)
+  (let ((sum-list '())
+        (num-sum 0))
+    (dolist (num as)
+      (if (numberp num)
+        (incf num-sum num)
+        (push num sum-list)))
+    (cond ((= num-sum 0) 
+           (if (= 1 (length sum-list)) 
+             (car sum-list) 
+             (cons '+ sum-list)))
+          ((null sum-list) num-sum)
+          (t (append (list '+ num-sum) sum-list)))))
+
+(defun addend (expr)
+  (cadr expr))
+
+(defun augend (expr)
+  (if (= 3 (length expr))
+    (caddr expr)
+    (cons '+ (cddr expr))))
+
+(defun make-product (&rest ms)
+  (let ((product-list '())
+        (num-product 1))
+    (dolist (num ms)
+      (if (numberp num)
+        (setf num-product (* num-product num))
+        (push num product-list)))
+    (cond ((= num-product 0) 0)
+          ((= num-product 1) (if (= 1 (length product-list)) 
+                               (car product-list)
+                               (cons '* product-list)))
+          ((null product-list) num-product)
+          (t (append (list '* num-product) product-list)))))
+
+(defun multiplier (expr)
+  (cadr expr))
+
+(defun multiplicand (expr)
+  (if (= 3 (length expr))
+    (caddr expr)
+    (cons '* (cddr expr))))
+
+;;;exercice 2.58
+;;a)
+(defun make-sum (a1 a2)
+  (cond ((equal a1 0) a2)
+        ((equal a2 0) a1)
+        ((and (numberp a1) (numberp a2)) (+ a1 a2))
+        (t (list a1 '+ a2))))
+
+(defun addend (expr)
+  (car expr))
+
+(defun augend (expr)
+  (caddr expr))
+
+(defun sum? (expr)
+  (equal (cadr expr) '+))
+
+(defun make-product (m1 m2)
+  (cond ((or (equal m1 0) (equal m2 0)) 0)
+        ((equal m1 1) m2)
+        ((equal m2 1) m1)
+        ((and (numberp m1) (numberp m2)) (* m1 m2))
+        (t (list m1 '* m2))))
+
+(defun multiplier (expr)
+  (car expr))
+
+(defun multiplicand (expr)
+  (caddr expr))
+
+(defun product? (expr)
+  (equal (cadr expr) '*))
+;;b)
+(defun sum? (expr)
+  (not (null (member '+ expr))))
+
+(defun addend (expr)
+  (let ((add-pos (position '+ expr)))
+    (if (equal 1 add-pos)
+      (first expr)
+      (subseq expr 0 add-pos))))
+
+(defun augend (expr)
+  (let ((add-pos (position '+ expr)))
+    (if (equal (- (length expr) 2) add-pos)
+      (car (last expr))
+      (subseq expr (1+ add-pos)))))
+
+(defun make-sum (&rest as)
+  (let ((sum-expr (list (car as))))
+    (dolist (num (subseq as 1) sum-expr)
+      (push '+ sum-expr)
+      (push num sum-expr))))
+
+(defun product? (expr)
+  (and (null (member '+ expr))
+       (some (lambda (x) (equal '* x)) expr)))
+
+(defun multiplier (expr)
+  (car expr))
+
+(defun multiplicand (expr)
+  (if (= (length expr) 3)
+    (car (last expr))
+    (subseq expr 2)))
+
+(defun make-product (&rest ms)
+  (let ((product-expr (list (car ms))))
+    (dolist (num (subseq ms 1) product-expr)
+      (push '* product-expr)
+      (push num product-expr))))
