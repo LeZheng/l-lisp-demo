@@ -1113,3 +1113,34 @@
     (dolist (num (subseq ms 1) product-expr)
       (push '* product-expr)
       (push num product-expr))))
+
+;;;;2.3.3
+(defun element-of-set? (x set)
+  (cond ((null set) nil)
+        ((equal (car set) x) t)
+        (t (element-of-set? x (cdr set)))))
+
+(defun adjoin-set (x set)
+  (if (element-of-set? x set)
+    set
+    (cons x set)))
+
+(defun intersection-set (set1 set2)
+  (cond ((or (null set1) (null set2)) '())
+        ((element-of-set? (car set1) set2)
+         (cons (car set1) (intersection-set (cdr set1) set2)))
+        (t (intersection-set (cdr set1) set2))))
+
+;;;exercice 2.59
+(defun union-set (set1 set2)
+  (cond ((null set1) set2)
+        ((null set2) set1)
+        ((element-of-set? (car set1) set2)
+         (union-set (cdr set1) set2))
+        (t (cons (car set1) (union-set (cdr set1) set2)))))
+
+;;;exercice 2.60
+;element-of-set? adjoin-set intersection-set  同上
+
+(defun union-set (set1 set2)
+  (append set1 set2))
