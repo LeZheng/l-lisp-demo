@@ -1175,3 +1175,45 @@
              (cond ((= x1 x2) (cons x1 (union-set (cdr set1) (cdr set2))))
                    ((< x1 x2) (cons x1 (union-set (cdr set1) set2)))
                    ((> x1 x2) (cons x2 (union-set set1 (cdr set2)))))))))
+
+;;;;集合作为二叉树
+(defun entry (tree) (car tree))
+(defun left-branch (tree) (cadr tree))
+(defun right-branch (tree) (caddr tree))
+(defun make-tree (entry left right)
+  (list entry left rigth))
+(defun element-of-set? (x set)
+  (cond ((null set) nil)
+        ((= x (entry set)) t)
+        ((< x (entry set)) (element-of-set? x (left-branch set)))
+        ((> x (entry set)) (element-of-set? x (right-branch set)))))
+
+(defun adjoin-set (x set)
+  (cond ((null set) (make-tree x nil nil))
+        ((= x (car set) set))
+        ((< x (car set))
+         (make-tree (car set)
+                    (adjoin-set x (left-branch set))
+                    (right-branch set)))
+        ((> x (car set))
+         (make-tree (car set)
+                    (left-branch set)
+                    (adjoin-set x (right-branch set))))))
+
+;;;exercice 2.63
+(defun tree->list-1 (tree)
+  (if (null tree)
+    '()
+    (append (tree->list-1 (left-branch tree))
+            (cons (entry tree) (tree->list-1 (right-branch tree))))))
+
+(defun tree->list-2 (tree)
+  (labels ((copy-to-list (tree result-list)
+                         (if (null tree)
+                           result-list
+                           (copy-to-list (left-branch tree)
+                                         (cons (entry tree)
+                                               (copy-to-list (right-branch tree) result-list))))))
+    (copy-to-list tree '())))
+;a) 相同
+;b) 不同 1是On2，而2是On
