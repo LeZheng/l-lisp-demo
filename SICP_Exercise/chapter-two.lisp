@@ -1181,7 +1181,7 @@
 (defun left-branch (tree) (cadr tree))
 (defun right-branch (tree) (caddr tree))
 (defun make-tree (entry left right)
-  (list entry left rigth))
+  (list entry left right))
 (defun element-of-set? (x set)
   (cond ((null set) nil)
         ((= x (entry set)) t)
@@ -1217,3 +1217,39 @@
     (copy-to-list tree '())))
 ;a) 相同
 ;b) 不同 1是On2，而2是On
+
+;;;exercice 2.64
+(defun list->tree (elements)
+  (car (partial-tree elements (length elements))))
+
+(defun partial-tree (elts n)
+  (if (= n 0)
+    (cons '() elts)
+    (let ((left-size (floor (- n 1) 2)))
+      (let ((left-result (partial-tree elts left-size)))
+        (let ((left-tree (car left-result))
+              (non-left-tree (cdr left-result))
+              (right-size (- n (1+ left-size))))
+          (let ((this-entry (car non-left-tree))
+                (right-result (partial-tree (cdr non-left-tree) right-size)))
+            (let ((right-tree (car right-result))
+                  (remaining-elts (cdr right-result)))
+              (cons (make-tree this-entry left-tree right-tree) remaining-elts))))))))
+;a)结果为(5 (1 NIL (3 NIL NIL)) (9 (7 NIL NIL) (11 NIL NIL)))
+;b)复杂度O(n)
+
+;;;exercice 2.65
+(defun union-tree (set1 set2)
+  (list->tree
+    (union-set (tree->list-2 set1) (tree->list-2 set2))))
+
+(defun intersection-set (set1 set2)
+  (list->tree
+    (intersection-set (tree->list-2 set1) (tree->list-2 set2))))
+
+;;;exercice 2.66
+(defun lookup (given-key set-of-records)
+  (cond ((null set-of-records) nil)
+        ((= given-key (key (entry set-of-records))) (entry set-of-records))
+        ((< given-key (key (entry set-of-records))) (lookup given-key (left-branch set-of-records)))
+        (t (lookup given-key (right-branch set-of-records)))))
