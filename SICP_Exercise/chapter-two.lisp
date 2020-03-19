@@ -1253,3 +1253,110 @@
         ((= given-key (key (entry set-of-records))) (entry set-of-records))
         ((< given-key (key (entry set-of-records))) (lookup given-key (left-branch set-of-records)))
         (t (lookup given-key (right-branch set-of-records)))))
+
+
+;;;;2.3.4
+(defun make-leaf (symbol weight)
+  (list 'leaf symbol weight))
+
+(defun leaf? (obj)
+  (eq (car obj) 'leaf))
+
+(defun symbol-leaf (x)
+  (cadr x))
+(defun weight-leaf (x)
+  (caddr x))
+
+(defun make-code-tree (left right)
+  (list left right (append (symbols left) (symbols right)) (+ (weight left) (weight right))))
+
+(defun left-branch (tree)
+  (car tree))
+(defun right-branch (tree)
+  (cadr tree))
+(defun symbols (tree)
+  (if (leaf? tree)
+    (list (symbol-leaf tree))
+    (caddr tree)))
+(defun weight (tree)
+  (if (leaf? tree)
+    (weight-leaf tree)
+    (cadddr tree)))
+
+(defun decode (bits tree)
+  (labels ((decode-1 (bits current-branch)
+                     (if (null bits)
+                       nil
+                       (let ((next-branch (choose-branch (car bits) current-branch)))
+                         (if (leaf? next-branch)
+                           (cons (symbol-leaf next-branch)
+                                 (decode-1 (cdr bits) tree))
+                           (decode-1 (cdr bits) next-branch))))))
+    (decode-1 bits tree)))
+
+(defun choose-branch (bit branch)
+  (cond ((= bit 0) (left-branch branch))
+        ((= bit 1) (right-branch branch))
+        (t (error "bad bit -- CHOOSE-BRANCH" bit))))
+
+(defun adjoin-set (x set)
+  (cond ((null set) (list x))
+        ((< (weight x) (weight (car set))) (cons x set))
+        (t (cons (car set) (adjoin-set x (cdr set))))))
+
+(defun make-leaf-set (pairs)
+  (if (null pairs)
+    nil
+    (let ((pair (car pairs)))
+      (adjoin-set (make-leaf (car pair) (cadr pair))
+                  (make-leaf-set (cdr pairs))))))
+
+;;;exercice 2.67
+(defvar sample-tree (make-code-tree (make-leaf 'A 4)
+                                    (make-code-tree
+                                      (make-leaf 'B 2)
+                                      (make-code-tree (make-leaf 'D 1)
+                                                      (make-leaf 'C 1)))))
+
+(defvar sample-message '(0 1 1 0 0 1 0 1 0 1 1 1 0)) ;=> (A D A B B C A)
+
+;;;exercice 2.68
+(defun encode (message tree)
+  (if (null message)
+    nil
+    (append (encode-symbol (car message) tree)
+            (encode (cdr message) tree))))
+
+(defun encode-symbol (symbol tree)
+  (if (leaf? tree)
+    (if (equal (symbol-leaf tree) symbol)
+      nil
+      (error "symbol not support"))
+    (if (position symbol (symbols (left-branch tree)))
+      (cons 0 (encode-symbol symbol (left-branch tree)))
+      (cons 1 (encode-symbol symbol (right-branch tree))))))
+
+;;;exercice 2.69
+(defun generate-huffman-tree (pairs)
+  (successive-merge (make-leaf-set pairs)))
+
+(defun successive-merge (leaf-set &optional (code-tree nil))
+  (cond ((null leaf-set) nil)
+        ((= 1 (length leaf-set)) (make-code-tree (car leaf-set) code-tree))
+        (t (successive-merge (cdr leaf-set) 
+                             (if (null code-tree) 
+                               (car leaf-set)
+                               (make-code-tree (car leaf-set) code-tree))))))
+
+;;;exercice 2.70
+(defvar rock-tree (generate-huffman-tree '((a 2) (na 16) (boom 1) (sha 3) (get 2) (yip 9) (job 2) (wah 1))))
+;(encode '(get a job sha na na na na na na na na get a job sha na na na na na na na na wah yip yip yip yip yip yip yip yip yip sha boom) rock-tree )
+; => length 87 ，如果用定长编码，需要108个二进制位
+
+;;;exercice 2.71
+;最频繁的用1个二进制位
+;最不频繁的用n-1个
+
+;;;exercice 2.72
+;最频繁的符号是n
+;最不频繁 (1+n) * n / 2 + n
