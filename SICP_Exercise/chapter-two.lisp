@@ -1360,3 +1360,43 @@
 ;;;exercice 2.72
 ;最频繁的符号是n
 ;最不频繁 (1+n) * n / 2 + n
+
+
+;;;;2.4
+(defun add-complex (z1 z2)
+  (make-from-real-imag (+ (real-part z1) (real-part z2))
+                       (+ (imag-part z1) (imag-part z2))))
+
+(defun sub-complex (z1 z2)
+  (make-from-real-imag (- (real-part z1) (real-part z2))
+                       (- (imag-part z1) (real-part z2))))
+
+(defun mul-complex (z1 z2)
+  (make-from-mag-ang (* (magnitude z1) (magnitude z2))
+                     (+ (angle z1) (angle z2))))
+
+(defun div-complex (z1 z2)
+  (make-from-mag-ang (/ (magnitude z1) (magnitude z2))
+                     (- (angle z1) (angle z2))))
+
+(defun real-part (z) (car z))
+(defun imag-part (z) (cdr z))
+(defun magnitude (z)
+  (sqrt (+ (expt (real-part z) 2) (expt (imag-part z) 2))))
+(defun angle (z)
+  (atan (imag-part z) (real-part z)))
+(defun make-from-real-imag (x y)
+  (cons x y))
+(defun make-from-mag-ang (r a)
+  (cons (* r (cos a)) (* r (sin a))))
+
+(defun real-part (z)
+  (* (magnitude z) (cos (angle z))))
+(defun imag-part (z)
+  (* (magnitude z) (sin (angle z))))
+(defun magnitude (z) (car z))
+(defun angle (z) (cdr z))
+(defun make-from-real-imag (x y)
+  (cons (sqrt (+ (expt x 2) (expt y 2)))
+        (atan y x)))
+(defun make-from-mag-ang (r a) (cons r a))
