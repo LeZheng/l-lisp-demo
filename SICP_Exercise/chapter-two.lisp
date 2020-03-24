@@ -1465,3 +1465,91 @@
   (make-from-real-imag-rectangular x y))
 (defun make-from-mag-ang (r a)
   (make-from-mag-ang-polar r a))
+
+
+(defun install-rectangular-package ()
+  (flet ((real-part (z) (car z))
+         (imag-part (z) (cdr z))
+         (make-from-real-imag (x y) (cons x y))
+         (magnitude (z)
+                    (sqrt (+ (expt (real-part z) 2)
+                             (expt (imag-part z) 2))))
+         (angle (z) (atan (imag-part z) (real-part z)))
+         (make-from-mag-ang (r a) (cons (* r (cos a)) (* (sin a))))
+         (tag (x) (attach-tag 'rectangular x)))
+    (put 'real-part '(rectangular) real-part)
+    (put 'imag-part '(rectangular) imag-part)
+    (put 'magnitude '(rectangular) magnitude)
+    (put 'angle '(rectangular) angle)
+    (put 'make-from-real-imag 'rectangular 
+         (lambda (x y) (tag (make-from-real-imag x y))))
+    (put 'make-from-mag-ang 'rectangular 
+         (lambda (r a) (tag (make-from-mag-ang r a))))
+    'done))
+
+(defun install-polar-package ()
+  (flet ((magnitude (z) (car z))
+         (angle (z) (cdr z))
+         (make-from-mag-ang (r a) (cons r a))
+         (real-part (z) (* (magnitude z) (cos (angle z))))
+         (imag-part (z) (* (magnitude z) (sin (angle z))))
+         (make-from-real-imag (x y)
+                              (cons (sqrt (+ (expt x 2) (expt x 2)))
+                                    (atan y x)))
+         (tag (x) (attach-tag 'polar x)))
+    (put 'real-part '(polar) real-part)
+    (put 'imag-part '(polar) imag-part)
+    (put 'magnitude '(polar) magnitude)
+    (put 'angle '(polar) angle)
+    (put 'make-from-real-imag 'polar 
+         (lambda (x y) (tag (make-from-real-imag x y))))
+    (put 'make-from-mag-ang 'polar 
+         (lambda (r a) (tag (make-from-mag-ang r a))))
+    'done))
+
+(defun apply-generic (op &rest args)
+  (let ((type-tags (mapcar #'type-tag args)))
+    (let ((proc (get op type-tags)))
+      (if proc
+        (apply proc (mapcar #'contents args))
+        (error "No method for these types -- APPLY-GENERIC" (list op type-tags))))))
+
+(defun real-part (z) (apply-generic 'real-part z))
+(defun imag-part (z) (apply-generic 'imag-part z))
+(defun magnitude (z) (apply-generic 'magnitude z))
+(defun angle (z) (apply-generic 'angle z))
+
+(defun make-from-real-imag (x y)
+  (funcall (get 'make-from-real-imag 'rectangular) x y))
+(defun make-from-mag-ang (r a)
+  (funcall (get 'make-from-mag-ang 'polar) r a))
+
+;;;exercice 2.73
+;a) 根据代数运算符的类型找到对应的操作，将其应用到操作的参数上。因为数字和变量是一类符号，不能应用数据导向分派。
+
+(defun deriv-1 (exp var)
+  (cond ((numberp exp) 0)
+        ((variable? exp) (if (equal exp var) 1 0))
+        (t (funcall (get 'deriv (operator exp)) (operands exp) var))))
+
+(defun operator (exp) (car exp))
+(defun operands (exp) (cdr exp))
+
+(defun install-sum ()
+  (labels ((deriv-add (args var)
+                      (make-sum (deriv-1 (first args) var)
+                                (deriv-1 (second args) var))))
+    (put 'deriv '+ deriv-add)))
+(defun install-product ()
+  (labels ((deriv-product (args var)
+                          (make-sum 
+                            (make-product (first args) (deriv-1 (second exp) var))
+                            (make-product (deriv-1 (first exp) var) (second exp)))))
+    (put 'deriv '* deriv-product)))
+
+;c) 略
+;d) 在安装的时候就是 (put '* 'deriv deriv-add) 这样了。
+
+;;;exercice 2.74 TODO
+
+
