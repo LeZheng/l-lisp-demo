@@ -1552,4 +1552,15 @@
 
 ;;;exercice 2.74 TODO
 
+;;;exercice 2.75
+(defun make-from-mag-ang-1 (r a)
+  (Lambda (op)
+          (cond ((eql op 'real-part) (* r (cos a)))
+                ((eql op 'imag-part) (* r (sin a)))
+                ((eql op 'magnitude) r)
+                ((eql op 'angle) a)
+                (t (error "Unknown op -- MAKE-FROM-REAL-IMAG" op)))))
 
+;;;exercice 2.76
+;数据导向适合经常加入操作的系统
+;消息传递适合经常加入类型的系统
