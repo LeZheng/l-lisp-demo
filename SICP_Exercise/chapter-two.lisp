@@ -1564,3 +1564,140 @@
 ;;;exercice 2.76
 ;数据导向适合经常加入操作的系统
 ;消息传递适合经常加入类型的系统
+
+
+;;;;2.5
+(defun add (x y) (apply-generic 'add x y))
+(defun sub (x y) (apply-generic 'sub x y))
+(defun mul (x y) (apply-generic 'mul x y))
+(defun div (x y) (apply-generic 'div x y))
+
+(defun install-scheme-number-package ()
+  (flet ((tag (x) (attach-tag 'scheme-number x)))
+    (put 'add '(scheme-number scheme-number)
+         (lambda (x y)(tag (+ x y))))
+    (put 'sub '(scheme-number scheme-number)
+         (lambda (x y) (tag (- x y))))
+    (put 'mul '(scheme-number scheme-number)
+         (lambda (x y) (tag (* x y))))
+    (put 'div '(scheme-number scheme-number)
+         (lambda (x y) (tag (/ x y))))
+    (put 'make 'scheme-number
+         (lambda (x) (tag x)))
+    (put 'equ? '(scheme-number scheme-number)
+         (lambda (x y) (= x y)))
+    (put '=zero? 'scheme-number
+         (lambda (x) (= x 0)))
+    'done))
+
+(defun make-scheme-number (n)
+  (funcall (get 'make 'scheme-number) n))
+
+(defun install-rational-package ()
+  (flet ((numer (x) (car x))
+         (denom (x) (cdr x))
+         (make-rat (n d) (let ((g (gcd n d)))
+                           (cons (/ n g) (/ d g))))
+         (add-rat (x y) (make-rat (+ (* (numer x) (denom y))
+                                     (* (numer y) (denom x)))
+                                  (* (denom x) (denom y))))
+         (sub-rat (x y) (make-rat (- (* (numer x) (denom y))
+                                     (* (numer y) (denom x)))
+                                  (* (denom x) (denom y))))
+         (mul-rat (x y) (make-rat (* (numer x) (numer y))
+                                  (* (denom x) (denom y))))
+         (div-rat (x y) (make-rat (* (numer x) (denom y))
+                                  (* (denom x) (numer y))))
+         (tag (x) (attach-tag 'rational x)))
+    (put 'add '(rational rational)
+         (lambda (x y) (tag (add-rat x y))))
+    (put 'sub '(rational rational)
+         (lambda (x y) (tag (sub-rat x y))))
+    (put 'mul '(rational rational)
+         (lambda (x y) (tag (mul-rat x y))))
+    (put 'div '(rational rational)
+         (lambda (x y) (tag (div-rat x y))))
+    (put 'make 'rational
+         (lambda (n d) (tag (make-rat n d))))
+    (put 'equ? '(rational rational)
+         (lambda (x y) (and (= (numer x) (numer y))
+                            (= (denom x) (denom y)))))
+    (put '=zero? 'rational
+         (lambda (x) (and (= (numer x) 0)
+                          (= (denom y) 0))))
+    'done))
+(defun make-rational (n d)
+  (funcall (get 'make 'rational) n d))
+
+(defun install-complex-package ()
+  (flet ((make-from-real-imag (x y)
+                              (funcall (get 'make-from-real-imag 'rectangular) x y))
+         (make-from-mag-ang (r a)
+                            (funcall (get 'make-from-mag-ang 'polar) r a))
+         (add-complex (z1 z2)
+                      (make-from-real-imag (+ (real-part z1) (real-part z2))
+                                           (+ (imag-part z1) (imag-part z2))))
+         (sub-complex (z1 z2)
+                      (make-from-real-imag (- (real-part z1) (real-part z2))
+                                           (- (imag-part z1) (real-part z2))))
+         (mul-complex (z1 z2)
+                      (make-from-mag-ang (* (magnitude z1) (magnitude z2))
+                                         (+ (angle z1) (angle z2))))
+         (div-complex (z1 z2)
+                      (make-from-mag-ang (/ (magnitude z1) (magnitude z2))
+                                         (- (angle z1) (angle z2))))
+         (tag (z) (attach-tag 'complex z)))
+    (put 'add '(complex complex)
+         (lambda (z1 z2) (tag (add-complex z1 z2))))
+    (put 'sub '(complex complex)
+         (lambda (z1 z2) (tag (sub-complex z1 z2))))
+    (put 'mul '(complex complex)
+         (lambda (z1 z2) (tag (mul-complex z1 z2))))
+    (pub 'div '(complex complex)
+         (lambda (z1 z2) (tag (div-complex z1 z2))))
+    (put 'make-from-real-imag 'complex
+         (lambda (x y) (tag (make-from-real-imag x y))))
+    (put 'make-from-mag-ang 'complex
+         (lambda (r a) (tag (make-from-mag-ang r a))))
+    (put 'equ? '(complex complex)
+         (lambda (x y) (and (= (real-part x) (real-part y))
+                            (= (imag-part x) (imag-part y)))))
+    (put '=zero? 'complex
+         (lambda (x y) (and (= (real-part x) 0)
+                            (= (imag-part x) 0))))
+    'done))
+
+(defun make-complex-from-real-imag (x y)
+  (funcall (get 'make-from-real-imag 'complex) x y))
+(defun make-complex-from-mag-ang (r a)
+  (funcall (get 'make-from-mag-ang 'complex) r a))
+
+;;;exercice 2.77
+; 因为这样会脱去最外层的complex，用rectangular 去调用magnitude 
+; 过程 TODO
+
+;;;exercice 2.78
+(defun attach-tag (type-tag contents)
+  (if (numberp contents)
+    contents
+    (cons type-tag contents)))
+
+(defun type-tag (datum)
+  (if (consp datum)
+    (car datum)
+    datum))
+
+(defun contents (datum)
+  (if (consp datum)
+    (car datum)
+    datum))
+
+;;;exercice 2.79
+;安装见上方
+(defun equ? (x y)
+  (apply-generic 'equ? x y))
+
+;;;exercice 2.80
+;安装见上方
+(defun equ? (x)
+  (apply-generic '=zero? x))
