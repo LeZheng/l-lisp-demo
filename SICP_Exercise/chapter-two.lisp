@@ -1411,7 +1411,7 @@
 
 (defun contents (datum)
   (if (consp datum)
-    (car datum)
+    (cdr datum)
     (error "bad tagged datum -- TYPE-TAG" datum)))
 
 (defun rectangular? (z)
@@ -1701,3 +1701,79 @@
 ;安装见上方
 (defun equ? (x)
   (apply-generic '=zero? x))
+
+
+;;;; 2.5.2
+(defun apply-generic (op &rest args)
+  (let ((type-tags (mapcar #'type-tag args)))
+    (let ((proc (get op type-tags)))
+      (if proc
+        (apply proc (map #'contents args))
+        (if (= (length args) 2)
+          (let ((type1 (car type-tags))
+                (type2 (cadr type-tags))
+                (a1 (car args))
+                (a2 (cadr args)))
+            (let ((t1->t2 (get-coercion type1 type2))
+                  (t2->t1 (get-coercion type2 type1)))
+              (cond 
+                (t1->t2 (apply-generic op (t1->t2 a1) a2))
+                (t2->t1 (apply-generic op a1 (t2->t1 a2)))
+                (t (error "No method for these types" (list op type-tags))))))
+          (error "No method for these types" (list op type-tags))))))
+
+;;;exercice 2.81
+;a) 找不到相应操作时会出现无限递归
+;b) 没有纠正，不能像原来那样正常工作
+;c)
+(defun apply-generic (op &rest args)
+  (let ((type-tags (mapcar #'type-tag args)))
+    (let ((proc (get op type-tags)))
+      (if proc
+        (apply proc (mapcar #'contents args))
+        (if (= (length args) 2)
+          (let ((type1 (car type-tags))
+                (type2 (cadr type-tags))
+                (a1 (car args))
+                (a2 (cadr args)))
+            (if (equal type1 type2)
+              (error "No method for these types" (list op type-tags))
+              (let ((t1->t2 (get-coercion type1 type2))
+                    (t2->t1 (get-coercion type2 type1)))
+                (cond 
+                  (t1->t2 (apply-generic op (funcall t1->t2 a1) a2))
+                  (t2->t1 (apply-generic op a1 (funcall t2->t1 a2)))
+                  (t (error "No method for these types" (list op type-tags)))))))
+          (error "No method for these types" (list op type-tags))))))
+
+;;;exercice 2.82
+(defun apply-generic-n (op &rest args)
+  (labels ((apply-inner (op i &rest args)
+                        (let ((n-args (mapcar (lambda (arg)
+                                                (let ((t->tn (get-coercion (type-tag arg)
+                                                                        (type-tag (elt args i)))))
+                                                  (if t->tn
+                                                    (apply t->tn arg)
+                                                    nil)))
+                                              args)))
+                          (let ((type-tags (mapcar #'type-tag n-args)
+                                           (let ((proc (get op type-tags)))
+                                             (if proc
+                                               (apply proc (mapcar #'contents n-args))
+                                               (if (= i (length args))
+                                                 (error "No Method for these type" (list op type-tags))
+                                                 (apply-inner op (1+ i) args))))))))))
+    (apply-inner op 0 args)))
+;;TODO 例外情况
+
+;;;exercice 2.83
+(defun install-raise ()
+  (put-coercion 'scheme-number 'rational 
+                (lambda (n) (make-rat (contents n) 1)))
+  (put-coercion 'rational 'complex
+                (lambda (n) (make-complex-from-real-imag (/ (numer (contents n)) (denom (contents n))) 0))))
+;;TODO raise
+
+;;;exercice 2.84 TODO
+;;;exercice 2.85 TODO
+;;;exercice 2.86 TODO
