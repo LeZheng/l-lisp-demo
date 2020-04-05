@@ -1777,3 +1777,87 @@
 ;;;exercice 2.84 TODO
 ;;;exercice 2.85 TODO
 ;;;exercice 2.86 TODO
+
+;;;;2.5.3
+(defun add-poly (p1 p2)
+  (if (same-variable? (variable p1) (variable p2))
+    (make-poly (variable p1)
+               (add-terms (term-list p1)
+                          (term-list p2)))
+    (error "polys not in same var -- ADD-POLY" (list p1 p2))))
+
+(defun mul-poly (p1 p2)
+  (if (same-variable? (variable p1) (variable p2))
+    (make-poly (variable p1)
+               (mul-terms (term-list p1)
+                          (term-list p2)))
+    (error "polys not in same var -- MUL-POLY" (list p1 p2))))
+
+(defun install-polyunomial-package ()
+  (labels ((make-poly (var term-list)
+                      (cons var term-list))
+           (variable (p) (car p))
+           (term-list (p) (cdr p))
+           (tag (p) (attach-tag 'polynomial p))
+           (put 'add '(polynomial polynomial)
+                (lambda (a b) (tag (add-poly a b))))
+           (put 'mul '(polynomial polynomial)
+                (lambda (a b) (tag (mul-poly a b))))
+           (put '=zero? 'polynomial
+                (lambda (p) ))
+           (put 'make 'polynomial
+                (lambda (var terms) (tag (make-poly var terms)))))))
+
+(defun add-terms (l1 l2)
+  (cond ((empty-termlist? l1) l2)
+        ((empty-termlist? l2) l1)
+        (t (let ((t1 (first-term l1)) (t2 (second-term l2)))
+             (cond ((> (order t1) (order t2))
+                    (adjoin-term t1 (add-terms (rest-terms l1) l2)))
+                   ((< (order t1) (order t2))
+                    (adjoin-term t2 (add-terms l1 (rest-terms l2))))
+                   (t (adjoin-term 
+                        (make-term (order t1)
+                                   (add (coeff t1) (coeff t2)))
+                        (add-terms (rest-terms l1)
+                                   (rest-terms l2)))))))))
+
+(defun mul-terms (l1 l2)
+  (if (empty-termlist? l1)
+    (the-empty-termlist)
+    (add-terms (mul-term-by-all-terms (first-term l1) l2)
+               (mul-terms (rest-terms l1) l2))))
+
+(defun mul-term-by-all-terms (t1 l)
+  (if (empty-termlist? l)
+    (the-empty-termlist)
+    (let ((t2 (first-term l)))
+      (adjoin-term
+        (make-term (+ (order t1) (order t2))
+                   (mul (coeff t1) (coeff t2)))
+        (mul-term-by-all-terms t1 (rest-terms l))))))
+
+(defun adjoin-term (term term-list)
+  (if (=zero? (coeff term))
+    term-list
+    (const term term-list)))
+
+(defun the-empty-termlist '())
+(defun first-term (term-list) (car term-list))
+(defun rest-terms (term-list) (cdr term-list))
+(defun empty-termlist? (term-list) (null term-list))
+(defun make-term (order coeff) (list order coeff))
+(defun order (term) (car term))
+(defun coeff (term) (cadr term))
+
+;;;exercice 2.87 TODO
+;;;exercice 2.88 TODO
+;;;exercice 2.89 TODO
+;;;exercice 2.90 TODO
+;;;exercice 2.91 TODO
+;;;exercice 2.92 TODO 
+;;;exercice 2.93 TODO
+;;;exercice 2.94 TODO
+;;;exercice 2.95 TODO
+;;;exercice 2.96 TODO
+;;;exercice 2.97 TODO
