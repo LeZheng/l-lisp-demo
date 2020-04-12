@@ -32,8 +32,9 @@
           (progn 
             (setf error-count 0)
             (cond ((equal m 'withdraw) #'withdraw)
-                ((equal m 'deposit) #'deposit)
-                (t (error "Unknown request -- MAKE_ACCOUNT" m))))
+                  ((equal m 'deposit) #'deposit)
+                  ((equal m 'check-password) t)
+                  (t (error "Unknown request -- MAKE_ACCOUNT" m))))
           (progn 
             (incf error-count)
             (if (>= error-count 7)
@@ -48,10 +49,10 @@
   (= (gcd (random 1000) (random 1000)) 1))
 
 (defun monte-carlo (trials experiment)
-  (labels (iter (trials-remaining trials-passwd)
+  (labels ((iter (trials-remaining trials-passwd)
                 (cond ((= trials-remaining 0) (/ trials-passwd trials))
                       ((experiment) (iter (- trials-remaining 1) (+ trials-passwd 1)))
-                      (t (iter (- trials-remaining 1) trials-passwd))))
+                      (t (iter (- trials-remaining 1) trials-passwd)))))
     (iter trials 0)))
 
 (defun random-in-range (low high)
@@ -74,3 +75,19 @@
                (setf state new-value) 
                state))
             (t (error "Unknown mode --RAND" mode))))))
+
+;;;exercise 3.7
+(defun make-joint (acc psd new-password)
+  (if (equal t (funcall acc psd 'check-password))
+    (lambda (password m)
+      (if (equal password new-password)
+        (funcall acc psd m)
+        (error "Incorrect Password")))
+    (error "Origin Incorrect Password")))
+
+;;;exercise 3.8
+(defvar last-n 0)
+(defun f (n)
+  (let ((r last-n))
+    (setf last-n n)
+    r))
