@@ -91,3 +91,81 @@
   (let ((r last-n))
     (setf last-n n)
     r))
+
+;;;exercise 3.9 3.10 3.11
+;;略
+
+
+;;;exercise 3.12
+(defun last-pair (x)
+  (if (null (cdr x))
+    x
+    (last-pair (cdr x))))
+
+(defun append! (x y)
+  (setf (cdr (last-pair x)) y)
+  x)
+;;第一个是(B)
+;;第二个是(B C D)
+
+;;;exercise 3.13
+(defun make-cycle (x)
+  (setf (cdr (last-pair x)) x)
+  x)
+;;死循环
+
+;;;exercise 3.14
+(defun mystery (x)
+  (labels ((loop (x y)
+                 (if (null x)
+                   y
+                   (let ((temp (cdr x)))
+                     (setf (cdr x) y)
+                     (loop temp x)))))
+    (loop x '())))
+;;w => (d c b a)
+;;v => (a)
+
+;;exercise 3.15 略
+
+;;;exercise 3.16
+;没有考虑共享和循环的情况，因此是错误的
+; '((1 3) 2 3) => 4 其中3共享
+; '((1 2 3) 2 3) => 7 其中 2 3 共享
+
+;;;exercise 3.17
+(defun count-pairs (x)
+  (let ((pairs '()))
+    (labels ((count-p (x)
+                      (if (position x pairs)
+                        0
+                        (progn
+                          (push x pairs)
+                          (if (consp x)
+                            (1+ (count-p (cdr x)))
+                            0)))))
+      (count-p x))))
+
+;;;exercise 3.18
+(defun is-loop (x)
+  (let ((pairs '()))
+    (labels ((has-loop? (x)
+                        (cond
+                          ((null x) nil)
+                          ((position x pairs) t)
+                          (t (progn
+                               (push x pairs)
+                               (has-loop? (cdr x)))))))
+      (has-loop? x))))
+
+;;;exercise 3.19
+(defun is-loop-1 (x)
+  (labels ((iter (x1 x2)
+                 (if (and (not (null x1)) (eq x1 x2))
+                   t
+                   (if (null x2)
+                     nil
+                     (iter (cdr x1) (cddr x2))))))
+    (iter x (cdr x))))
+
+;;;exercise 3.20 略
