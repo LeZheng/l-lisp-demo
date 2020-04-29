@@ -169,3 +169,237 @@
     (iter x (cdr x))))
 
 ;;;exercise 3.20 略
+
+
+;;;;3.3.2
+(defun front-ptr (queue)
+  (car queue))
+(defun rear-ptr (queue)
+  (cdr queue))
+(defun set-front-ptr! (queue item)
+  (setf (car queue) item))
+(defun set-rear-ptr! (queue item)
+  (setf (cdr queue) item))
+(defun empty-queue? (queue)
+  (null (front-ptr queue)))
+(defun make-queue ()
+  (cons '() '()))
+(defun front-queue (queue)
+  (if (empty-queue? queue)
+    (error "FRONT called with an empty queue" queue)
+    (car (front-ptr queue))))
+
+(defun insert-queue! (queue item)
+  (let ((new-pair (cons item '())))
+    (cond ((empty-queue? queue)
+           (set-front-ptr! queue new-pair)
+           (set-rear-ptr! queue new-pair)
+           queue)
+          (t
+            (setf (cdr (rear-ptr queue)) new-pair)
+            (set-rear-ptr! queue new-pair)
+            queue))))
+
+(defun delete-queue! (queue)
+  (if (empty-queue? queue)
+    (error "DELETE called with an empty queue" queue)
+    (progn 
+      (set-front-ptr! queue (cdr (front-ptr queue)))
+      queue)))
+
+;;;exercise 3.21
+;front-ptr开始的都清空了，但是rear-ptr没有清空
+(defun print-queue (queue)
+  (format t "~A~%" (front-ptr queue)))
+
+;;;exercise 3.22
+(defun make-queue ()
+  (let ((front-ptr '())
+        (rear-ptr '()))
+    (labels ((empty-queue? () (null front-ptr))
+             )
+      (lambda (m)
+        (case m
+          ('front-ptr front-ptr)
+          ('rear-ptr rear-ptr)
+          ('empty-queue? (empty-queue?))
+          ('insert-queue! (lambda (item) 
+                            (let ((new-pair (cons item '())))
+                              (cond ((empty-queue?)
+                                     (setf front-ptr new-pair)
+                                     (setf rear-ptr new-pair)
+                                     front-ptr)
+                                    (t 
+                                      (setf (cdr rear-ptr) new-pair)
+                                      (setf rear-ptr new-pair)
+                                      front-ptr)))))
+          ('delete-queue! (if (empty-queue?)
+                            (error "DELETE called with an empty queue")
+                            (progn
+                              (setf front-ptr (cdr front-ptr))
+                              front-ptr))))))))
+
+;;;exercise 3.23
+(defun make-deque ()
+  (let ((front-ptr '())
+        (rear-ptr '()))
+    (labels ((empty-deque? () (null front-ptr)))
+      (lambda (m)
+        (case m
+          ('front-deque front-ptr)
+          ('rear-deque rear-ptr)
+          ('empty-deque? (empty-deque?))
+          ('front-insert-deque! (lambda (item)
+                                  (let ((new-pair (cons item (cons nil front-ptr))))
+                                    (cond ((empty-deque?)
+                                           (setf front-ptr new-pair)
+                                           (setf rear-ptr new-pair)
+                                           (setf (cadr rear-ptr) new-pair)
+                                           (setf (cddr front-ptr) new-pair)
+                                           front-ptr)
+                                          (t
+                                            (setf (cadr front-ptr) new-pair)
+                                            (setf front-ptr new-pair)
+                                            front-ptr)))))
+          ('rear-insert-deque! (lambda (item)
+                                 (let (new-pair (cons item (cons rear-ptr nil)))
+                                   (cond ((empty-deque?)
+                                          (setf front-ptr new-pair)
+                                          (setf rear-ptr new-pair)
+                                          (setf (cadr rear-ptr) new-pair)
+                                          (setf (cddr front-ptr) new-pair)
+                                          front-ptr)
+                                         (t 
+                                           (setf (cddr rear-ptr) new-pair)
+                                           (setf rear-ptr new-pair)
+                                           front-ptr)))))
+          ('front-delete-deque! (when (not (empty-deque?))
+                                  (setf front-ptr (cddr front-ptr))
+                                  (setf (cadr front-ptr) nil)
+                                  front-ptr))
+          ('rear-delete-deque! (when (not (empty-deque?))
+                                 (setf rear-ptr (cadr rear-ptr))
+                                 (setf (cddr rear-ptr) nil)
+                                 front-ptr)))))))
+
+;;;;3.3.3
+(defun lookup (key table)
+  (let ((record (my-assoc key (cdr table))))
+    (if record
+      (cdr record)
+      nil)))
+(defun my-assoc (key records)
+  (cond ((null records) nil)
+        ((equal key (caar records)) (car records))
+        (t (my-assoc key (cdr records)))))
+(defun insert! (key value table)
+  (let ((record (my-assoc key (cdr table))))
+    (if record
+      (setf (cdr record) value)
+      (setf (cdr table) (cons (cons key value) (cdr table))))))
+(defun make-table ()
+  (list '*table*))
+
+(defun lookup (key-1 key-2 table)
+  (let ((subtable (my-assoc key-1 (cdr table))))
+    (if subtable
+      (let ((record (my-assoc key-2 (cdr subtable))))
+        (if record
+          (cdr record)
+          nil))
+      nil)))
+(defun insert! (key-1 key-2 value table)
+  (let ((subtable (my-assoc key-1 (cdr table))))
+    (if subtable
+      (let ((record (my-assoc key-2 (cdr subtable))))
+        (if record
+          (setf (cdr record) value)
+          (setf (cdr subtable) (cons (cons key-2 value) (cdr subtable)))))
+      (setf (cdr table)
+            (cons (list key-1 (cons key-2 value))
+                  (cdr table))))))
+
+(defun make-table ()
+  (let ((local-table (list '*table*)))
+    (labels ((lookup (key-1 key-2)
+                     (let ((subtable (my-assoc key-1 (cdr local-table))))
+                       (if subtable
+                         (let ((record (my-assoc key-2 (cdr subtable))))
+                           (if record
+                             (cdr record)
+                             nil))
+                         (nil))))
+             (insert! (key-1 key-2 value)
+                      (let ((subtable (my-assoc key-1 (cdr local-table))))
+                        (if subtable
+                          (let ((record (my-assoc key-2 (cdr subtable))))
+                            (if record
+                              (setf (cdr record) value)
+                              (setf (cdr subtable) (cons (cons key-2 value)
+                                                         (cdr subtable)))))
+                          (setf (cdr local-table) (cons (list key-1 (cons key2 value))
+                                                        (cdr local-table)))))))
+      (lambda (m)
+        (cond ((eq m 'lookup-proc) #'lookup)
+              ((eq m 'insert-proc #'insert!))
+              (t (error "Unknown operation -- TABLE" m)))))))
+
+;;;exercise3.24
+(defun make-table-1 (same-key?)
+  (let ((local-table (list '*table*)))
+    (labels ((my-assoc (key records)
+                       (cond ((null records) nil)
+                             ((funcall same-key? key (caar records)) (car records))
+                             (t (my-assoc key (cdr records))))))
+      (labels ((lookup (key-1 key-2)
+                       (let ((subtable (my-assoc key-1 (cdr local-table))))
+                         (if subtable
+                           (let ((record (my-assoc key-2 (cdr subtable))))
+                             (if record
+                               (cdr record)
+                               nil))
+                           nil)))
+               (insert! (key-1 key-2 value)
+                        (let ((subtable (my-assoc key-1 (cdr local-table))))
+                          (if subtable
+                            (let ((record (my-assoc key-2 (cdr subtable))))
+                              (if record
+                                (setf (cdr record) value)
+                                (setf (cdr subtable) (cons (cons key-2 value)
+                                                           (cdr subtable)))))
+                            (setf (cdr local-table) (cons (list key-1 (cons key2 value))
+                                                          (cdr local-table)))))))
+        (lambda (m)
+          (cond ((eq m 'lookup-proc) #'lookup)
+                ((eq m 'insert-proc #'insert!))
+                (t (error "Unknown operation -- TABLE" m))))))))
+
+;;;exercise 3.25
+(defun make-table-n ()
+  (let ((local-table (list '*table*)))
+    (labels ((lookup (keys table)
+                     (let ((record (my-assoc (car keys) (cdr table))))
+                       (if record
+                         (if (null (cdr keys))
+                           record
+                           (lookup (cdr keys) record))
+                         nil)))
+             (insert! (keys value table)
+                      (let ((record (my-assoc (car keys) (cdr table))))
+                        (if record
+                          (insert! (cdr keys) value (cdr record))
+                          (if (null (cdr keys))
+                            (setf (cdr table) (cons (cons (car keys) value) (cdr table)))
+                            (setf (cdr table) (cons (cons (car keys) (insert! (cdr keys) value (cdr table)))
+                                                    (cdr table))))))))
+      (lambda (m)
+        (cond ((eq m 'lookup-proc) #'lookup)
+              ((eq m 'insert-proc) #'insert!)
+              (t (error "Unknown operation -- TABLE" m)))))))
+
+;;;exercise 3.26
+;TODO 
+
+;;;exercise 3.27
+;对于每个n只计算一次
+;不能正常工作因为调用的是fib
