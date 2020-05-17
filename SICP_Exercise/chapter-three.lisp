@@ -403,3 +403,389 @@
 ;;;exercise 3.27
 ;对于每个n只计算一次
 ;不能正常工作因为调用的是fib
+
+
+;;;;3.3.4
+(defun make-wire ()
+  (let ((signal-value 0) (action-procedures '()))
+    (labels ((set-my-signal! (new-value)
+                             (if (not (= signal-value new-value))
+                               (progn (setf signal-value new-value)
+                                      (call-each action-procedures))
+                               'done))
+             (accept-action-procedure! (proc)
+                                       (setf action-procedures (cons proc action-procedures))
+                                       (funcall proc))
+             (dispatch (m)
+                       (cond ((eql m 'get-signal) #'signal-value)
+                             ((eql m 'set-signal) #'set-my-signal!)
+                             ((eql m 'add-action!) #'accept-action-procedure!)
+                             (t (error "Unknown operation -- WIRE" m)))))
+      #'dispatch)))
+
+(defun call-each (procedures)
+  (if (null procedures)
+    'done
+    (progn
+      (funcall (car prodedures) (call-each (cdr procedures))))))
+
+(defun get-signal (wire)
+  (funcall wire 'get-signal))
+(defun set-signal! (wire new-value)
+  (funcall (funcall wire 'set-signal!) new-value))
+(defun add-action! (wire action-procedure)
+  (funcall (funcall wire 'add-action!) action-procedure))
+
+(defun logical-or (a1 a2)
+  (cond ((or (= a1 1) (= a2 1)) 1)
+         (and (= a1 0) (= a2 0) 0)
+         (t (error "Invalid signal" a1 a2))))
+
+(defun logical-and (a1 a2)
+  (cond ((and (= a1 1) (= a2 1) 1))
+        ((or (= a1 0) (= a2 0)) 0)
+        (t (error "Invalid signal" a1 a2))))
+
+(defun logical-not (s)
+  (cond ((= s 0) 1)
+        ((= s 1) 0)
+        (t (error "Invalid signal" s))))
+
+(defun inverter (input output)
+  (labels ((invert-input ()
+                         (let ((new-value (logical-not (get-signal input))))
+                           (after-delay inverter-delay
+                                        (lambda ()
+                                          (set-signal! output new-value))))))
+    (add-action! input invert-input)
+    'ok))
+
+(defun and-gate (a1 a2 output)
+  (labels ((and-action-procedure ()
+                                 (let ((new-value (logical-and (get-signal a1) (get-signal a2))))
+                                   (after-delay and-gate-delay
+                                                (lambda ()
+                                                  (set-signal! output new-value))))))
+    (add-action! a1 and-action-procedure)
+    (add-action! a2 and-action-procedure)
+    'ok))
+
+;;;exercise 3.28
+(defun or-gate (a1 a2 output)
+  (labels ((or-action-procedure ()
+                                (let ((new-value (logical-or (get-signal a1) (get-signal a2))))
+                                  (after-delay or-gate-delay
+                                               (lambda ()
+                                                 (set-signal! output new-value))))))
+    (add-action! a1 or-action-procedure)
+    (add-action! a2 or-action-procedure)
+    'or))
+
+;;;exercise 3.29
+(defun or-gate-1 (a1 a2 output)
+  (let ((invert-1 (make-wire))
+        (invert-2 (make-wire))
+        (and-invert-1-invert-2 (make-wire)))
+    (inverter a1 invert-1)
+    (inverter a2 invert-2)
+    (and-gate a1 a2 and-invert-1-invert-2)
+    (inverter and-invert-1-invert-2))
+  'ok)
+;时间为 3*invert-delay + and-gate-delay
+
+;;;exercise 3.30
+(defun half-adder (a b s c)
+  (let ((d (make-wire)) (e (make-wire)))
+    (or-gate a b d)
+    (and-gate a b c)
+    (inverter c e)
+    (and-gate d e s)
+    'ok))
+
+(defun full-adder (a b c-in sum c-out)
+  (let ((s (make-wire))
+        (c1 (make-wire))
+        (c2 (make-wire)))
+    (half-adder b c-in s c1)
+    (half-adder a s sum c2)
+    (or-gate c1 c2 c-out)
+    'ok))
+
+(defun ripple-carry-adder (as bs ss c)
+  (let ((c-out (make-wire)))
+    (full-adder (car as) (car bs) c (car ss) c-out)
+    (if (null (cdr as))
+      'ok
+      (ripple-carry-adder (cdr as) (cdr bs) (cdr ss) c-out))))
+
+(defun after-delay (delay action)
+  (add-to-agenda! (+ delay (current-time the-agenda))
+                  action
+                  the-agenda))
+
+(defun propagate ()
+  (if (empty-agenda? the-agenda)
+    'done
+    (let ((first-item (first-agenda-item the-agenda)))
+      (first-item)
+      (remove-first-agenda-item! the-agenda)
+      (propagate))))
+
+(defun probe (name wire)
+  (add-action! wire
+               (lambda ()
+                 (format t "~% ~A ~A New-value = ~A" 
+                   name 
+                   (current-time the-agenda)
+                   (get-signal wire)))))
+
+(defun make-time-segment (time queue)
+  (cons time queue))
+
+(defun segment-time (s) (car s))
+(defun segment-queue (s) (cdr s))
+
+(defun make-agenda ()
+  (list 0))
+(defun l-current-time (agenda) (car agenda))
+(defun set-current-time! (agenda time)
+  (setf (car agenda) time))
+(defun segments (agenda) (cdr agenda))
+(defun set-segments! (agenda segments)
+  (setf (cdr agenda) segments))
+
+(defun first-segment (agenda) (car (segments agenda)))
+(defun rest-segments (agenda) (cdr (segments agenda)))
+
+(defun empty-agenda? (agenda)
+  (null (segments agenda)))
+
+;TODO uncomplete labels 
+(defun add-to-agenda! (time action agenda)
+  (labels ((belongs-before? (segments)
+                            (or (null segments) (< time (segment-time (car (segments))))))
+           (make-new-time-segment (time action)
+                                  (let ((q (make-queue)))
+                                    (insert-queue! q action)
+                                    (make-time-segment time q)))
+           (add-to-segments! (segments)
+                             (if (= (segment-time (car segments)) time)
+                               (insert-queue! (segment-queue (car segments)) action)
+                               (let ((rest (cdr segments)))
+                                 (if (belongs-before? rest)
+                                   (setf (cdr segments) (cons (make-new-time-segment time action) (cdr segments)))
+                                   (add-to-segments! rest))))))
+    (let ((segments (segments agenda)))
+      (if (belongs-before? segments)
+        (set-segments! agenda (cons (make-new-time-segment time action) segments))
+        (add-to-segments! segments)))))
+
+(defun remove-first-agenda-item! (agenda)
+  (let ((q (segment-queue (first-segment agenda))))
+    (delete-queue! q)
+    (if (empty-queue? q)
+      (set-segments! agenda (rest-segments agenda)))))
+
+(defun first-agenda-item (agenda)
+  (if (empty-agenda? agenda)
+    (error "agenda is empty -- FIRST-AGENDA-ITEM")
+    (let ((first-seg (first-segment agenda)))
+      (set-current-time! agenda (segment-time first-seg))
+      (front-queue (segment-queue first-seg)))))
+
+;;;exercise 3.32 TODO
+
+;;;;3.3.5
+
+(defun celsius-fahrenheit-conerter (c f)
+  (let ((u (make-connector))
+	(v (make-connector))
+	(w (make-connector))
+	(x (make-connector))
+	(y (make-connector)))
+    (multiplier c w u)
+    (multiplier v x u)
+    (adder v y f)
+    (constant 9 w)
+    (constant 5 x)
+    (constant 32 y)
+    'ok))
+
+(defun adder (a1 a2 sum)
+  (let ((me nil))
+    (labels ((process-new-value ()
+	       (cond
+		 ((and (has-value? a1) (has-value? a2))
+		  (set-value! sum
+			      (+ (get-value a1) (get-value a2))
+			      me))
+		 ((and (has-value? a1) (has-value? sum))
+		  (set-value! a2
+			      (- (get-value sum) (get-value a1))
+			      me))
+		 ((and (has-value? a2) (has-value? sum))
+		  (set-value! a1
+			      (- (get-value sum) (get-value a2))
+			      me)))))
+      (labels ((process-forget-value ()
+		 (forget-value! sum me)
+		 (forget-value! a1 me)
+		 (forget-value! a2 me)
+		 (process-new-value)))
+	(setf me (lambda (request)
+		   (cond ((eql request 'I-have-a-value)
+			  (process-new-value))
+			 ((eql request 'I-lost-my-value)
+			  (process-forget-value))
+			 (t (error "Unknown request -- ADDER" request)))))
+	(connect a1 me)
+	(connect a2 me)
+	(connect sum me)
+	me))))
+
+(defun inform-about-value (constraint)
+  (funcall constraint 'I-have-a-vlaue))
+(defun inform-about-no-value (constraint)
+  (funcall constraint 'I-lost-my-value))
+
+(defun multiplier (m1 m2 product)
+  (let ((me nil))
+    (labels ((process-new-value ()
+	       (cond ((or (and (has-value? m1) (= (get-value m1) 0))
+			  (and (has-value? m2) (= (get-value m2) 0)))
+		      (set-value! product 0 me))
+		     ((and (has-value? m1) (has-value? m2))
+		      (set-value! product
+				  (* (get-value m1) (get-value m2))
+				  me))
+		     ((and (has-value? product) (has-value? m1))
+		      (set-value! m2
+				  (/ (get-value product) (get-value m1))
+				  me))
+		     ((and (has-value? product) (has-value? m2))
+		      (set-value! m1
+				  (/ (get-value product) (get-value m2))
+				  m2)))))
+      (labels ((process-forget-value ()
+		 (forget-value! product me)
+		 (forget-value! m1 me)
+		 (forget-value! m2 me)
+		 (process-new-value)))
+	(setf me (lambda (request)
+		   (cond ((eql request 'I-have-a-vlaue) (process-new-value))
+			 ((eql request 'I-lost-my-value) (process-forget-value))
+			 (t (error "Unknown request -- MULTIPLIER" request)))))
+	(connect m1 me)
+	(connect m2 me)
+	(connect product me)
+	me))))
+
+(defun constraint (value connector)
+  (let ((me (lambda (request)
+	      (error "Unknown request -- CONSTANT" request))))
+    (connect connector me)
+    (set-value! connector value me)
+    me))
+
+(defun probe (name connector)
+  (labels ((print-probe (value)
+	     (format t "~% Probe:~A = ~A" name value)))
+    (let ((me nil))
+      (labels ((process-new-value ()
+		 (print-probe (get-value connector)))
+	       (process-forget-value ()
+		 (print-probe "?")))
+	(setf me (lambda (request)
+		   (cond ((eql request 'I-have-a-vlaue) (process-new-value))
+			  ((eql request 'I-lost-my-value) (process-forget-value))
+			  (t (error "Unknown request -- PROBE" request)))))
+	(connect connector me)
+	me))))
+
+(defun make-connector ()
+  (let ((value false) (informant false) (constraints '()) (me nil))
+    (labels ((set-my-value (newval setter)
+	       (cond ((not (has-value? me))
+		      (setf value newval)
+		      (setf informant setter)
+		      (for-each-except setter inform-about-value constraints))
+		     ((not (- value newval))
+		      (error "Contradiction" (list value newval)))
+		     (t 'ignored)))
+	     (forget-my-value (retractor)
+	       (if (eql retractor informant)
+		   (progn (setf informant false)
+			  (for-each-except retractor inform-about-no-value constraints))
+		   'ignored))
+	     (connect (new-constraint)
+	       (if (not (member new-constraint constraints)) ;member memq ?
+		   (setf constraints
+			 (cons new-constraint constraints)))
+	       (if (has-value? me)
+		   (inform-about-value new-constraint))
+	       'done))
+      (setf me (lambda (request)
+		 (cond ((eql request 'has-value?)
+			(if informant true false))
+		       ((eql request 'value) value)
+		       ((eql request 'set-value!) (lambda (n s) (set-my-value n s)))
+		       ((eql request 'forget) (lambda (r) (forget-my-value r)))
+		       ((eql request 'connect) (lambda (n) (connect n)))
+		       (t (error "Unknown operation -- CONNECTOR" request)))))
+      me)))
+
+(defun for-each-except (exception procedure list)
+  (labels ((inner-loop (items)
+	     (cond ((null items) 'done)
+		   ((eql (car items) exception) (inner-loop (cdr items)))
+		   ((t (funcall procedure (car items))
+		       (inner-loop (cdr items)))))))
+    (inner-loop list)))
+
+(defun has-value? (connector)
+  (funcall connector 'has-value?))
+(defun get-value (connector)
+  (funcall connector 'value))
+(defun set-value! (connector new-value informant)
+  (funcall (funcall connector 'set-value!) new-value informant))
+(defun forget-value! (connector retractor)
+  (funcall (funcall connector 'forget) retractor))
+(defun connect (connector new-constraint)
+  (funcall (funcall connector 'connect) new-constraint))
+
+;;;exercise 3.33
+(defun averager (a b c)
+  (let ((sum (make-connector))
+	(d (make-connector)))
+    (adder a b sum)
+    (multiplier sum d c)
+    (constant (/ 1 2) d)
+    'ok))
+
+;;;exercise 3.34
+;可以从a得到b，但是无法从b得到a，只有b有值的情况下，multiplier无法得到它的两个a引线的值。
+
+;;;exercise 3.35
+(defun squarer (a b)
+  (let ((me nil))
+    (labels ((process-new-value ()
+	       (if (has-value? b)
+		   (if (< (get-value b) 0)
+		       (error "square less than 0 -- SQUARER" (get-value b))
+		       (set-value! a (sqrt (get-value b)) me))
+		   (if (has-value? a)
+		       (set-value! b (expt (get-value a) 2) me)
+		       (error "Neither a nor b has value"))))
+	     (process-forget-value ()
+	       (forget-value! a me)
+	       (forget-value! b me)))
+      (setf me (lambda (request)
+		 (cond ((eql request 'I-have-a-vlaue) (process-new-value))
+		       ((eql request 'I-lost-my-value) (process-forget-value))
+		       (t (error "Unknown request -- MULTIPLIER" request)))))
+      (connect a me)
+      (connect b me)
+      me)))
+
+;;;exercise 3.36 3.37 TODO
+
