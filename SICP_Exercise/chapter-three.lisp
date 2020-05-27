@@ -116,13 +116,13 @@
 
 ;;;exercise 3.14
 (defun mystery (x)
-  (labels ((loop (x y)
+  (labels ((my-loop (x y)
                  (if (null x)
                    y
                    (let ((temp (cdr x)))
                      (setf (cdr x) y)
-                     (loop temp x)))))
-    (loop x '())))
+                     (my-loop temp x)))))
+    (my-loop x '())))
 ;;w => (d c b a)
 ;;v => (a)
 
@@ -789,3 +789,97 @@
 
 ;;;exercise 3.36 3.37 TODO
 
+;;;;3.4
+;;;exercise 3.38
+;a 60 35 50 45
+;b 略
+
+;;;exercise 3.39
+;100还会出现
+
+;;;exercise 3.40
+;;a) 1000000 100000 10000
+;;b) 1000000
+
+;;;exercise 3.41
+;;不同意，不存在
+
+;;;exercise 3.42-3.49
+;;TODO
+
+;;;;3.5
+
+(defparameter the-empty-stream '())
+
+(defun memo-proc (proc)
+  (let ((already-run? nil) (result nil))
+    (lambda ()
+      (if (not already-run?)
+	  (progn (setf result (funcall proc))
+		 (setf already-run? t)
+		 result)
+	  result))))
+
+(defun stream-null? (stream)
+  (null stream))
+
+(defmacro delay (exp)
+  `(memo-proc (lambda () ,exp)))
+(defun force (delayed-object)
+  (funcall delayed-object))
+(defun cons-stream (a b)
+  (cons a (delay b)))
+(defun stream-car (stream)
+  (car stream))
+(defun stream-cdr (stream)
+  (force (cdr stream)))
+
+(defun stream-ref (s n)
+  (if (= n 0)
+      (stream-car s)
+      (stream-ref (stream-cdr s) (- n 1))))
+
+(defun stream-filter (pred stream)
+  (cond ((stream-null? stream) the-empty-stream)
+	((funcall pred (stream-car stream))
+	 (cons-stream (stream-car stream)
+		      (stream-filter pred
+				     (stream-cdr stream))))
+	(t (stream-filter pred (stream-cdr stream)))))
+
+(defun stream-for-each (proc s)
+  (if (stream-null? s)
+      'done
+      (progn (funcall proc (stream-car s))
+	     (stream-for-each proc (stream-cdr s)))))
+
+(defun display-stream (s)
+  (stream-for-each #'print s))
+
+(defun stream-enumerate-interval (low high)
+  (if (> low high)
+      the-empty-stream
+      (cons-stream
+       low
+       (stream-enumerate-interval (+ low 1) high))))
+
+;;;exercise 3.50
+(defun stream-map (proc &rest argstreams)
+  (if (null (car argstreams))
+      the-empty-stream
+      (cons-stream
+       (apply proc (mapcar #'stream-car argstreams))
+       (apply #'stream-map (cons proc (mapcar #'stream-cdr argstreams))))))
+
+;;;exercise 3.51
+;;0 1 2 3 4 5 6 7 8 9 10
+;;5
+;;7
+
+;;;exercise 3.52
+;;seq执行完是 210
+;;y 执行完是 210
+;;z 执行完是 210
+;;stream-ref 执行完是210 ，执行打印136
+;;display-stream 打印 10 15 45 55 105 120 190 210 DONE
+;;并不总是210
