@@ -1047,3 +1047,24 @@
 ;;;exercise 3.75 TODO
 
 ;;;exercise 3.76 TODO
+
+;;;exercise 3.77
+(defun integral-1 (delay-integrand initial-value dt)
+  (cons-stream
+   initial-value
+   (if (stream-null? (force delay-integrand))
+       the-empty-stream
+       (integral-1 (stream-cdr (force delay-integrand))
+		   (+ (* dt (stream-car (force delay-integrand)))
+		      initial-value)
+		   dt))))
+
+;;;exercise 3.78
+(defun solve-2nd (a b dt y0 dyo dydt)
+  ;;TODO
+  )
+
+;;;exercise 3.79 TODO
+
+;;;exercise 3.80 TODO
+  
