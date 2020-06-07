@@ -1068,3 +1068,6 @@
 
 ;;;exercise 3.80 TODO
   
+;;;exercise 3.81 TODO
+
+;;;exercise 3.82 TODO
