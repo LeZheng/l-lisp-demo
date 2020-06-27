@@ -356,4 +356,177 @@
 ;;;exercise 4.10
 ;;修改选择函数和构造函数即可 TODO 不是很理解？
 
+;;;; 4.1.3
+(defun true? (x)
+  (not (eql x nil)))
 
+(defun false? (x)
+  (eql x nil))
+
+(defun make-procedure (parameters body env)
+  (list 'procedure parameters body env))
+
+(defun compound-procedure? (p)
+  (tagged-list? p 'procedure))
+
+(defun procedure-parameters (p)
+  (cadr p))
+
+(defun procedure-body (p)
+  (caddr p))
+
+(defun procedure-environment (p)
+  (cadddr p))
+
+(defun enclosing-environment (env)
+  (cdr env))
+
+(defun first-frame (env) (car env))
+
+(defvar the-empty-environment '())
+
+(defun make-frame (variables values)
+  (cons variables values))
+
+(defun frame-variables (frame) (car frame))
+
+(defun frame-values (frame) (cdr frame))
+
+(defun add-binding-to-frame! (var val frame)
+  (setf (car frame) (cons var (car frame)))
+  (setf (cdr frame) (cons val (cdr frame))))
+
+(defun extend-environment (vars vals base-env)
+  (if (= (length vars) (length vals))
+      (cons (make-frame vars vals) base-env)
+      (if (< (length vars) (length vals))
+	  (error "Too many arguments supplied" vars vals)
+	  (error "Too few arguments supplied" vars vals))))
+
+(defun lookup-variable-value (var env)
+  (labels ((env-loop (env)
+	     (labels ((scan (vars vals)
+			(cond ((null vars) (env-loop (enclosing-environment env)))
+			      ((eql var (car vars)) (car vals))
+			      (t (scan (cdr vars) (cdr vals))))))
+	       (if (eql env the-empty-environment)
+		   (error "Unbound variable" var)
+		   (let ((frame (first-frame env)))
+		     (scan (frame-variables frame)
+			   (frame-values frame)))))
+	     (env-loop env)))))
+
+(defun set-variable-value! (var val env)
+  (labels ((env-loop (env)
+	     (labels ((scan (vars vals)
+			(cond ((null vars) (env-loop (enclosing-environment env)))
+			      ((eql var (car vars)) (setf (car vals) val))
+			      (t (scan (cdr vars) (cdr vals))))))
+	       (if (eql env the-empty-environment)
+		   (error "Unbound variable" var)
+		   (let ((frame (first-frame env)))
+		     (scan (frame-variables frame)
+			   (frame-values frame)))))
+	     (env-loop env)))))
+
+(defun define-variable! (var val env)
+  (let ((frame (first-frame env)))
+    (labels ((scan (vars vals)
+	       (cond ((null vars) (add-binding-to-frame! var val frame))
+		     ((eql var (car vars)) (setf (car vals) val))
+		     (t (scan (cdr vars) (cdr vals))))))
+      (scan (frame-variables frame)
+	    (frame-values frame)))))
+
+;;;exercise 4.11
+(defun make-frame (variables values)
+  (if (or (null variables) (null values))
+      nil
+      (cons (cons (car variables) (car values))
+	    (make-frame (cdr variables) (cdr values)))))
+
+(defun frame-variables (frame)
+  (if (null frame)
+      nil
+      (cons (caar frame) (frame-variables (cdr frame)))))
+
+(defun frame-values (frame)
+  (if (null frame)
+      nil
+      (cons (cdar frame) (frame-values (cdr frame)))))
+
+(defun add-binding-to-frame! (var val frame)
+  (setf (cdr frame) frame)
+  (setf (car frame) (cons var cal)))
+
+;;;exercise 4.12
+(defun scan-map (vars vals found-action no-action)
+  (cond ((null vars) (funcall no-action))
+	((eql var (car vars)) (funcall found-action vars vals))
+	(t (scan-map (cdr vars) (cdr vals)))))
+
+;;;exercise 4.13 TODO
+
+;;;;4.1.4
+(defun setup-environment ()
+  (let ((initial-env (extend-environment (primitive-procedure-names)
+					 (primitive-procedure-objects)
+					 the-empty-environment)))
+    (define-variable! 'true t initial-env)
+    (define-variable! 'false nil initial-env)
+    initial-env))
+
+(setf the-global-environment (setup-environment))
+
+(defun primitive-procedure? (proc)
+  (tagged-list? proc 'primitive))
+
+(defun primitive-implementation (proc)
+  (cadr proc))
+
+(setf primitive-procedures (list (list 'car #'car)
+				 (list 'cdr #'cdr)
+				 (list 'cons #'cons)
+				 (list 'null #'null)
+				 ))
+
+(defun primitive-procedure-names ()
+  (mapcar #'car primitive-procedures))
+
+(defun primitive-procedure-objects ()
+  (mapcar (lambda (proc) (list 'primitive (cadr proc)))
+	  primitive-procedures))
+
+(setf apply-primitive-procedure #'apply)
+
+(defun apply-primitive-procedure (proc args)
+  (apply-in-underlying-scheme
+   (primitive-implementation proc) args))
+
+(setf input-prompt ";;; M-Eval input:")
+(setf output-prompt ";;; M-Eval value:")
+
+(defun driver-loop ()
+  (prompt-for-input input-prompt)
+  (let ((input (read)))
+    (let ((output (d-eval input the-global-environment)))
+      (announce-output output-prompt)
+      (user-print output)))
+  (driver-loop))
+
+(defun prompt-for-input (string)
+  (format t "~%~%~A~%" string))
+
+(defun announce-output (string)
+  (format t "~%~A~%" string))
+       
+(defun user-print (object)
+  (if (compound-procedure? object)
+      (format t "~A" (list 'compound-procedure
+			 (procedure-parameters object)
+			 (procedure-body object)
+			 ))
+      (format t "~A" object)))
+
+;;;exercise 4.14
+;;运行环境不同
