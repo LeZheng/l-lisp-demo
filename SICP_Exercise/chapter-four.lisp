@@ -7,8 +7,8 @@
 
 (defun eval-if (exp env)
   (if (true? (l-eval (if-predicate exp) env))
-      (eval (if-consequent exp) env)
-      (eval (if_alternative exp) env)))
+      (l-eval (if-consequent exp) env)
+      (l-eval (if-alternative exp) env)))
 
 (defun eval-sequence (exps env)
   (cond ((last-exp? exps) (l-eval (first-exp exps) env))
@@ -42,11 +42,12 @@
 	 (eval-sequence (begin-actions exp) env))
 	((cond? exp) (l-eval (cond->if exp) env))
 	((application? exp)
-	 (l-apply (eval (operator exp) env)
+	 (l-apply (l-eval (operator exp) env)
 		  (list-of-values (operands exp) env)))
 	(t (error "Unknown expression type -- EVAL" exp))))
 
 (defun l-apply (procedure arguments)
+  (format t "l-apply:~A~%" procedure)
   (cond ((primitive-procedure? procedure)
 	 (apply-primitive-procedure procedure arguments))
 	((compound-procedure? procedure)
@@ -229,42 +230,54 @@
 	(funcall eval-proc exp env))))
 
 (defun expression-type (exp)
-  (cond ((self-evaluating? exp) '(self-evaluating))
-	((variable? exp) '(variable))
-	((quoted? exp) '(quote))
-	((assignment? exp) '(assignment))
-	((definition? exp) '(definition))
-	((if? exp) '(if))
-	((lambda? exp) '(lambda))
-	((begin? exp) '(begin))
-	((cond? exp) '(cond))
-	((let? exp) '(let))
-	((application? exp) '(application)))
-	(t (error "Unknown expression type -- EXPRESSION-TYPE" exp)))
+  (cond ((self-evaluating? exp) 'self-evaluating)
+	((variable? exp) 'variable)
+	((quoted? exp) 'quote)
+	((assignment? exp) 'assignment)
+	((definition? exp) 'definition)
+	((if? exp) 'if)
+	((lambda? exp) 'lambda)
+	((begin? exp) 'begin)
+	((cond? exp) 'cond)
+	((let? exp) 'let)
+	((application? exp) 'application)
+	(t (error "Unknown expression type -- EXPRESSION-TYPE" exp))))
 
 (defun install-eval ()
-  (setf (get 'eval '(self-evaluating)) (lambda (exp env) exp))
-  (setf (get 'eval '(variable)) #'lookup-variable-value)
-  (setf (get 'eval '(quote))
+  (setf (get 'eval 'self-evaluating) (lambda (exp env) exp))
+  (setf (get 'eval 'variable) #'lookup-variable-value)
+  (setf (get 'eval 'quote)
 	(lambda (exp env) (text-of-quotation exp)))
-  (setf (get 'eval '(assignment)) #'eval-assignment)
-  (setf (get 'eval '(definition)) #'eval-definition)
-  (setf (get 'eval '(if)) #'eval-if)
-  (setf (get 'eval '(lambda))
+  (setf (get 'eval 'assignment) (lambda (exp env)
+				  (set-variable-value! (assignment-variable exp)
+						       (d-eval (assignment-value exp) env)
+						       env)
+				  'ok))
+  (setf (get 'eval 'definition) (lambda (exp env)
+				  (define-variable! (definition-variable exp)
+				      (d-eval (definition-value exp) env)
+				    env)
+				  'ok))
+  (setf (get 'eval 'if) (lambda (exp env)
+			  (if (true? (d-eval (if-predicate exp) env))
+			      (d-eval (if-consequent exp) env)
+			      (d-eval (if-alternative exp) env))))
+  (setf (get 'eval 'lambda)
 	(lambda (exp env)
 	  (make-procedure (lambda-parameters exp)
 			 (lambda-body exp)
 			 env)))
-  (setf (get 'eval '(begin))
+  (setf (get 'eval 'begin)
 	(lambda (exp env)
 	  (eval-sequence (begin-actions exp) env)))
-  (setf (get 'eval '(cond))
+  (setf (get 'eval 'cond)
 	(lambda (exp env)
 	  (d-eval (cond->if exp) env)))
-  (setf (get 'eval '(application))
+  (setf (get 'eval 'application)
 	(lambda (exp env)
 	  (l-apply (d-eval (operator exp) env)
 		   (list-of-values (operands exp) env)))))
+;(install-eval)
 
 ;;;exercise 4.4
 (defun eval-and (exps env)
@@ -405,6 +418,7 @@
 
 (defun lookup-variable-value (var env)
   (labels ((env-loop (env)
+	     (format t "env-loop:~A - ~A~%" var env)
 	     (labels ((scan (vars vals)
 			(cond ((null vars) (env-loop (enclosing-environment env)))
 			      ((eql var (car vars)) (car vals))
@@ -413,8 +427,8 @@
 		   (error "Unbound variable" var)
 		   (let ((frame (first-frame env)))
 		     (scan (frame-variables frame)
-			   (frame-values frame)))))
-	     (env-loop env)))))
+			   (frame-values frame)))))))
+    (env-loop env)))
 
 (defun set-variable-value! (var val env)
   (labels ((env-loop (env)
@@ -439,25 +453,25 @@
 	    (frame-values frame)))))
 
 ;;;exercise 4.11
-(defun make-frame (variables values)
+(defun l-make-frame (variables values)
   (if (or (null variables) (null values))
       nil
       (cons (cons (car variables) (car values))
 	    (make-frame (cdr variables) (cdr values)))))
 
-(defun frame-variables (frame)
+(defun l-frame-variables (frame)
   (if (null frame)
       nil
       (cons (caar frame) (frame-variables (cdr frame)))))
 
-(defun frame-values (frame)
+(defun l-frame-values (frame)
   (if (null frame)
       nil
       (cons (cdar frame) (frame-values (cdr frame)))))
 
-(defun add-binding-to-frame! (var val frame)
+(defun l-add-binding-to-frame! (var val frame)
   (setf (cdr frame) frame)
-  (setf (car frame) (cons var cal)))
+  (setf (car frame) (cons var val)))
 
 ;;;exercise 4.12
 (defun scan-map (vars vals found-action no-action)
@@ -468,6 +482,19 @@
 ;;;exercise 4.13 TODO
 
 ;;;;4.1.4
+(setf primitive-procedures (list (list 'car #'car)
+				 (list 'cdr #'cdr)
+				 (list 'cons #'cons)
+				 (list 'null #'null)
+				 ))
+
+(defun primitive-procedure-names ()
+  (mapcar #'car primitive-procedures))
+
+(defun primitive-procedure-objects ()
+  (mapcar (lambda (proc) (list 'primitive (cadr proc)))
+	  primitive-procedures))
+
 (defun setup-environment ()
   (let ((initial-env (extend-environment (primitive-procedure-names)
 					 (primitive-procedure-objects)
@@ -484,20 +511,7 @@
 (defun primitive-implementation (proc)
   (cadr proc))
 
-(setf primitive-procedures (list (list 'car #'car)
-				 (list 'cdr #'cdr)
-				 (list 'cons #'cons)
-				 (list 'null #'null)
-				 ))
-
-(defun primitive-procedure-names ()
-  (mapcar #'car primitive-procedures))
-
-(defun primitive-procedure-objects ()
-  (mapcar (lambda (proc) (list 'primitive (cadr proc)))
-	  primitive-procedures))
-
-(setf apply-primitive-procedure #'apply)
+(setf (symbol-function 'apply-in-underlying-scheme) #'apply)
 
 (defun apply-primitive-procedure (proc args)
   (apply-in-underlying-scheme
