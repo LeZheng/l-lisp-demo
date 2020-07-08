@@ -265,7 +265,7 @@
   (setf (get 'eval 'lambda)
 	(lambda (exp env)
 	  (make-procedure (lambda-parameters exp)
-			 (lambda-body exp)
+			 (scan-out-defines (lambda-body exp)) ;;这里的 scan-out-defines 来自练习4.16
 			 env)))
   (setf (get 'eval 'begin)
 	(lambda (exp env)
@@ -544,3 +544,82 @@
 
 ;;;exercise 4.14
 ;;运行环境不同
+
+;;;exercise 4.15 略
+
+;;;exercise 4.16
+(defun lookup-variable-value (var env)
+  (labels ((env-loop (env)
+	     (format t "env-loop:~A - ~A~%" var env)
+	     (labels ((scan (vars vals)
+			(cond ((null vars) (env-loop (enclosing-environment env)))
+			      ((eql (car vals) '*unassigned*) (error "value is *unassigned*"))
+			      ((eql var (car vars)) (car vals))
+			      (t (scan (cdr vars) (cdr vals))))))
+	       (if (eql env the-empty-environment)
+		   (error "Unbound variable" var)
+		   (let ((frame (first-frame env)))
+		     (scan (frame-variables frame)
+			   (frame-values frame)))))))
+    (env-loop env)))
+
+(defun scan-out-defines (body)
+  (let ((bindings '())
+	(result-body '()))
+    (dolist (item body)
+      (if (definition? item)
+	  (progn
+	    (push (list (definition-variable item) '*unassigned*) bindings)
+	    (push (list 'setf (definition-variable item) (definition-value item)) result-body))
+	  (push item result-body)))
+    (cons 'let (cons bindings (reverse result-body)))))
+
+;;;exercise 4.17
+;;1. 因为变换之后的程序多了一个let，这个时候引入了新的frame。
+;;2. 因为e3求值的时候访问的是同样的定义，尽管环境不同。
+;;3. TODO
+
+;;;exercise 4.18
+;;1. 不能正常工作，因为这里面的dy的定义依赖于之前y的定义，或者说，y的定义必须在dy的定义前。
+
+;;;exercise 4.19
+;;支持eva的方式
+;;实现 TODO
+		
+;;;exercise 4.20
+(defun trans-letrec (exp)
+  (let ((bindings '())
+	(result-body '()))
+    (dolist (binding (cadr exp))
+      (format t "~A~%" binding)
+      (push (cons (car binding) '*unassigned*) bindings)
+      (format t "1~%")
+      (push (list 'setf (car binding) (cadr binding)) result-body))
+    (cons 'let (cons bindings (append result-body (cddr exp))))))
+;;b) 环境层数不一样
+
+;;;exercise 4.21
+;;a)确实可以
+(defun test-fib ()
+  (funcall (lambda (n)
+	     (funcall (lambda (f)
+			(funcall f f (1- n)))
+		      (lambda (f i)
+			(cond ((= i 0) 1)
+			      ((= i 1) 1)
+			      (t (+ (funcall f f (- i 1))
+				 (funcall f f (- i 2))))))))
+	   10))
+      
+;;b)
+(defun f (x)
+  (funcall (lambda (even? odd?)
+	     (funcall even? even? odd? x))
+	   (lambda (ev? od? n)
+	     (if (= n 0)
+		 t
+		 (funcall od? ev? od? (- n 1))))
+	   (lambda (ev? od? n)
+	     (if (= n 0)
+		 nil
+		 (funcall ev? ev? od? (- n 1))))))
