@@ -623,3 +623,108 @@
 	     (if (= n 0)
 		 nil
 		 (funcall ev? ev? od? (- n 1))))))
+
+;;;;4.1.7
+(defun c-eval (exp env)
+  (funcall (analyze exp) env))
+
+(defun analyze (exp)
+  (cond ((self-evaluating? exp)
+	 (analyze-self-evaluating exp))
+	((quoted? exp) (analyze-quoted exp))
+	((variable? exp) (analyze-variable exp))
+	((assignment? exp) (analyze-assignment exp))
+	((definition? exp) (analyze-definition exp))
+	((if? exp) (analyze-if exp))
+	((lambda? exp) (analyze-lambda exp))
+	((begin? exp) (analyze-sequence (begin-actions exp)))
+	((cond? exp) (analyze (cond->if exp)))
+	((let? exp) (analyze-let exp))
+	((application? exp) (analyze-application exp))
+	(t (error "Unknown expression type -- ANALYZE" exp))))
+
+(defun analyze-self-evaluating (exp)
+  (lambda (env) exp))
+
+(defun analyze-quoted (exp)
+  (let ((qval (text-of-quotation exp)))
+    (lambda (env) qval)))
+
+(defun analyze-variable (exp)
+  (lambda (env) (lookup-variable-value exp env)))
+
+(defun analyze-assignment (exp)
+  (let ((var (assignment-variable exp))
+	(vproc (analyze (assignment-value exp))))
+    (lambda (env)
+      (set-variable-value! var (funcall vproc env) env)
+      'ok)))
+
+(defun analyze-definition (exp)
+  (let ((var (definition-variable exp))
+	(vproc (analyze (definition-value exp))))
+    (lambda (env)
+      (define-variable! var (vproc env) env)
+      'ok)))
+
+(defun analyze-if (exp)
+  (let ((pproc (analyze (if-predicate exp)))
+	(cproc (analyze (if-consequent exp)))
+	(aproc (analyze (if-alternative exp))))
+    (lambda (env)
+      (if (true? (pproc env))
+	  (funcall cproc env)
+	  (funcall aproc env)))))
+
+(defun analyze-lambda (exp)
+  (let ((vars (lambda-parameters exp))
+	(bproc (analyze-sequence (lambda-body exp))))
+    (lambda (env) (make-procedure vars bproc env))))
+
+(defun analyze-sequence (exps)
+  (labels ((sequentially (proc1 proc2)
+	     (lambda (env) (funcall proc1 env) (funcall proc2 env))))
+    (labels ((loop (first-proc rest-procs)
+		(if (null rest-procs)
+		    first-proc
+		    (loop (sequentially first-proc (car rest-procs))
+		       (cdr rest-procs)))))
+      (let ((procs (mapcar #'analyze exps)))
+	(if (null procs)
+	    (error "Empty sequence -- ANALYZE"))
+	(loop (car procs) (cdr procs))))))
+
+(defun analyze-application (exp)
+  (let ((fproc (analyze (operator exp)))
+	(aprocs (mapcar #'analyze (operands exp))))
+    (lambda (env)
+      (execute-application (funcall fproc env)
+			   (mapcar (lambda (aproc) (funcall aproc env))
+				   aprocs)))))
+
+(defun execute-application (proc args)
+  (cond ((primitive-procedure? proc)
+	 (apply-primitive-procedure proc args))
+	((compound-procedure? proc)
+	 (funcall (procedure-body proc)
+		  (extend-environment (procedure-parameters proc)
+				      args
+				      (procedure-environment proc))))
+	(t (error "Unknown procedure type -- EXECUTE-APPLICATION" proc))))
+
+;;;exercise 4.22
+(defun analyze-let (exp)
+  (lambda (env)
+    (c-eval (let->combination exp) env)))
+
+;;;exercise 4.23 判断是否为最后一个过程的操作，正文中的在分析阶段就完成了
+
+;;;exercise 4.24 TODO
+
+;;;; 4.2
+;;; exercise 4.25
+;;在应用序的Scheme里会出现死循环，在正则序的语言里能正常工作
+
+;;;exercise 4.26
+;;实现可以参考if，把条件反过来。
+;;情况举例不出来
