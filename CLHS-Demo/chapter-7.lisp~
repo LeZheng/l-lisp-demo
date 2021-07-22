@@ -1,0 +1,38 @@
+;;function-keywords
+(defmethod gf1 ((a integer)
+		&optional (b 2)
+		&key (c 3) ((:dee d) 4) e ((eff f)))
+  (list a b c d e f))
+(function-keywords (find-method #'gf1 '() (list (find-class 'integer))))
+
+;;change-class
+(defclass my-position() ())
+(defclass x-y-position (my-position)
+  ((x :initform 0 :initarg :x)
+   (y :initform 0 :initarg :y)))
+(defclass r-t-position (my-position)
+  ((rho :initform 0)
+   (theta :initform 0)))
+(defmethod update-instance-for-different-class :before ((old x-y-position)
+							(new r-t-position)
+							&key)
+  (let ((x (slot-value old 'x))
+	(y (slot-value old 'y)))
+    (setf (slot-value new 'rho) (sqrt (+ (* x x) (* y y)))
+	  (slot-value new 'theta) (atan y x))))
+(setq p1 (make-instance 'x-y-position :x 2 :y 0))
+(change-class p1 'rho-theta-position)
+;;slot-boundp
+(slot-boundp p1 'rho)
+;;slot-exists-p
+(slot-exists-p p1 'rhoxxx)
+;;slot-makunbound
+(slot-makunbound p1 'rho)
+;;slot-value
+(setf (slot-value p1 'rho) 33)
+(print (slot-value p1 'rho))
+;;make-instance
+(defclass person ()
+  ((name :initform "" :initarg :name)
+   (age :initform 0 :initarg :age)))
+(make-instance 'person :name "colin" :age 11)
