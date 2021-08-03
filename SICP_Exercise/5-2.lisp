@@ -43,21 +43,35 @@
   (funcall (funcall register 'set) value))
 
 (defun make-stack ()
-  (let ((s '()))
-    (labels ((s-push (x) (setf s (cons x s)))
+  (let ((s '())
+	(number-pushes 0)
+	(max-depth 0)
+	(current-depth 0))
+    (labels ((s-push (x)
+		     (setf s (cons x s))
+		     (setf number-pushes (1+ number-pushes))
+		     (setf current-depth (1+ current-depth))
+		     (setf max-depth (max current-depth max-depth)))
 	     (s-pop ()
 		    (if (null s)
 			(error "Empty stack -- POP")
 		      (let ((top (car s)))
 			(setf s (cdr s))
+			(setf current-depth (- current-depth 1))
 			top)))
 	     (initialize ()
 			 (setf s '())
-			 'done))
+			 (setf number-pushes 0)
+			 (setf max-depth 0)
+			 (setf current-depth 0)
+			 'done)
+	     (print-statistics ()
+			       (format t "~% total-pushes = ~A~% maximum-depth = ~A" number-pushes max-depth)))
 	    (lambda (message)
 	      (case message
 		    ('push #'s-push)
 		    ('pop (s-pop))
+		    ('print-statistics (print-statistics))
 		    ('initialize (initialize)))))))
 
 (defun s-pop (stack)
@@ -72,7 +86,8 @@
 	(stack (make-stack))
 	(the-instruction-sequence '()))
     (let ((the-ops
-	   (list (list 'initialize-stack (lambda () (funcall stack 'initialize)))))
+	   (list (list 'initialize-stack (lambda () (funcall stack 'initialize)))
+		 (list 'print-stack-statistics (lambda () (funcall stack 'print-statistics)))))
 	  (register-table
 	   (list (list 'pc pc) (list 'flag flag))))
       (labels ((allocate-register (name)
@@ -84,7 +99,7 @@
 				(let ((val (assoc name register-table)))
 				  (if val
 				      (cadr val)
-				    (error "Unknown register:" name))))
+				    nil)))
 	       (execute ()
 			(let ((insts (get-contents pc)))
 			  (if (null insts)
@@ -116,6 +131,14 @@
 
 (defun get-register (machine reg-name)
   (funcall (funcall machine 'get-register) reg-name))
+
+(defun get-or-allocate-register (machine reg-name)
+  (let ((register (get-register machine reg-name)))
+    (if (null register)
+	(progn
+	  (funcall (funcall machine 'allocate-register) reg-name)
+	  (get-register machine reg-name))
+	register)))
 
 (defun assemble (controller-text machine)
   (extract-labels controller-text
@@ -176,10 +199,12 @@
 	('save (make-save inst machine stack pc))
 	('restore (make-restore inst machine stack pc))
 	('perform (make-perform inst machine labels ops pc))
+	('init-stack (make-init-stack inst machine stack ops pc))
+	('print-statistics (make-print-statistics inst machine stack ops pc))
 	(otherwise (error "Unknown instruction type -- ASSEMBLE" inst))))
 
 (defun make-assign (inst machine labels operations pc)
-  (let ((target (get-register machine (assign-reg-name inst)))
+  (let ((target (get-or-allocate-register machine (assign-reg-name inst)))
 	(value-exp (assign-value-exp inst)))
     (let ((value-proc (if (operation-exp? value-exp)
 			  (make-operation-exp value-exp machine labels operations)
@@ -229,7 +254,7 @@
 	     (lambda ()
 	       (set-contents pc insts))))
 	  ((register-exp? dest)
-	   (let ((reg (get-register machine (register-exp-reg dest))))
+	   (let ((reg (get-or-allocate-register machine (register-exp-reg dest))))
 	     (lambda ()
 	       (set-contents pc (get-contents reg)))))
 	  (otherwise (error "Bad GOTO instruction -- ASSEMBLE" inst)))))
@@ -237,14 +262,26 @@
 (defun goto-dest (goto-instruction)
   (cadr goto-instruction))
 
+(defun make-init-stack (inst machine stack operations pc)
+  (lambda ()
+    (let ((op (lookup-prim 'initialize-stack operations)))
+      (funcall op))
+    (advance-pc pc)))
+
+(defun make-print-statistics (inst machine stack operations pc)
+  (lambda ()
+    (let ((op (lookup-prim 'print-stack-statistics operations)))
+      (funcall op))
+    (advance-pc pc)))
+
 (defun make-save (inst machine stack pc)
-  (let ((reg (get-register machine (stack-inst-reg-name inst))))
+  (let ((reg (get-or-allocate-register machine (stack-inst-reg-name inst))))
     (lambda ()
       (s-push stack (get-contents reg))
       (advance-pc pc))))
 
 (defun make-restore (inst machine stack pc)
-  (let ((reg (get-register machine (stack-inst-reg-name inst))))
+  (let ((reg (get-or-allocate-register machine (stack-inst-reg-name inst))))
     (lambda ()
       (set-contents reg (s-pop stack))
       (advance-pc pc))))
@@ -272,7 +309,7 @@
 	 (let ((insts (lookup-label labels (label-exp-label exp))))
 	   (lambda () insts)))
 	((register-exp? exp)
-	 (let ((r (get-register machine (register-exp-reg exp))))
+	 (let ((r (get-or-allocate-register machine (register-exp-reg exp))))
 	   (lambda () (get-contents r))))
 	(otherwise (error "Unknown expression type -- ASSEMBLE" exp))))
 
@@ -303,8 +340,62 @@
   (let ((val (assoc symbol operations)))
     (if val
 	(cadr val)
-      (error "Unknown operation -- ASSEMBLE" symbol))))
+      (error "Unknown operation ~A ASSEMBLE" symbol))))
 
+(defun test-demo-2 ()
+  (let ((gcd-machine (make-machine
+		      '();;这里不传递所需要的寄存器，而是汇编程序直接根据指令添加寄存器
+		      (list (list 'rem #'rem) (list '= #'=))
+		      '(test-b
+			(test (op =) (reg b) (const 0))
+			(branch (label gcd-done))
+			(assign t (op rem) (reg a) (reg b))
+			(assign a (reg b))
+			(assign b (reg t))
+			(goto (label test-b))
+			gcd-done))))
+    (set-register-contents gcd-machine 'a 206)
+    (set-register-contents gcd-machine 'b 40)
+    (start gcd-machine)
+    (get-register-contents gcd-machine 'a)))
 
-
+(defun test-demo-3 ()
+  (let ((n-machine (make-machine
+		    '()
+		    (list (list '= #'=)
+			  (list '- #'-)
+			  (list '* #'*)
+			  (list 'read (lambda ()
+					(print "Please input:")
+					(read)))
+			  (list 'print (lambda (v)
+						(print v))))
+		    '(
+		      start
+		      (init-stack)
+		      (assign n (op read))
+		      (assign continue (label fact-done))
+		      fact-loop
+		      (test (op =) (reg n) (const 1))
+		      (branch (label base-case))
+		      (save continue)
+		      (save n)
+		      (assign n (op -) (reg n) (const 1))
+		      (assign continue (label after-fact))
+		      (goto (label fact-loop))
+		      after-fact
+		      (restore n)
+		      (restore continue)
+		      (assign val (op *) (reg n) (reg val))
+		      (goto (reg continue))
+		      base-case
+		      (assign val (const 1))
+		      (goto (reg continue))
+		      fact-done
+		      (perform (op print) (reg val))
+		      (print-statistics)
+		      (goto (label start))))))
+    (start n-machine)))
+    
+		      
 	
