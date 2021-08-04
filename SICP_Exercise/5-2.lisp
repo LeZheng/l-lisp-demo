@@ -1,3 +1,4 @@
+
 (defun test-demo-1 ()
   (let ((gcd-machine (make-machine
 		      '(a b t)
@@ -18,7 +19,7 @@
 (defun tagged-list? (exp tag)
   (if (consp exp)
       (eql (car exp) tag)
-      nil))
+    nil))
 
 (defun make-machine (register-names ops controller-text)
   (let ((machine (make-new-machine)))
@@ -29,11 +30,17 @@
     machine))
 
 (defun make-register (name)
-  (let ((contents '*unassigned*))
+  (let ((contents '*unassigned*)
+	(trace-flag nil))
     (lambda (message)
       (case message
+	    ('trace-on (setf trace-flag t))
+	    ('trace-off (setf trace-flag nil))
 	    ('get contents)
-	    ('set (lambda (v) (setf contents v)))
+	    ('set (lambda (v)
+		    (if trace-flag
+			(format t "set register ~A from ~A to ~A~%" name contents v));;寄存器跟踪
+		    (setf contents v)))
 	    (otherwise (error "Unknown request -- REGISTER" message))))))
 
 (defun get-contents (register)
@@ -81,7 +88,9 @@
   (funcall (funcall stack 'push) value))
 
 (defun make-new-machine ()
-  (let ((pc (make-register 'pc))
+  (let ((execute-count 0)
+	(trace-flag t)
+	(pc (make-register 'pc))
 	(flag (make-register 'flag))
 	(stack (make-stack))
 	(the-instruction-sequence '()))
@@ -105,7 +114,10 @@
 			  (if (null insts)
 			      'done
 			    (progn
+			      (if trace-flag
+				  (format t "execute : ~A~%" (caar insts)));;指令追踪
 			      (funcall (instruction-execution-proc (car insts)))
+			      (setf execute-count (1+ execute-count));;指令计数
 			      (execute))))))
 	      (lambda (message)
 		(case message
@@ -117,8 +129,13 @@
 		      ('install-operations (lambda (ops) (setf the-ops (append the-ops ops))))
 		      ('stack stack)
 		      ('operations the-ops)
+		      ('trace-on (setf trace-flag t))
+		      ('trace-off (setf trace-flag nil))
+		      ('print-execute-count (lambda ()
+					      (format t "execute-count: ~A~%" execute-count)
+					      (setf execute-count 0)))
 		      (otherwise (error "Unknown request -- MACHINE" message))))))))
-      
+
 (defun start (machine)
   (funcall machine 'start))
 
@@ -138,7 +155,7 @@
 	(progn
 	  (funcall (funcall machine 'allocate-register) reg-name)
 	  (get-register machine reg-name))
-	register)))
+      register)))
 
 (defun assemble (controller-text machine)
   (extract-labels controller-text
@@ -155,9 +172,9 @@
 			(if (symbolp next-inst)
 			    (if (find-if (lambda (l) (equal l next-inst)) labels :key #'car)
 				(error "label is existed")
-			    (funcall receive insts (cons (make-label-entry next-inst insts) labels)))
+			      (funcall receive insts (cons (make-label-entry next-inst insts) labels)))
 			  (funcall receive (cons (make-instruction next-inst)
-					 insts)
+						 insts)
 				   labels)))))))
 
 (defun update-insts (insts labels machine)
@@ -356,7 +373,10 @@
 			gcd-done))))
     (set-register-contents gcd-machine 'a 206)
     (set-register-contents gcd-machine 'b 40)
+    (funcall gcd-machine 'trace-on);;测试指令追踪
+    (funcall (get-register gcd-machine 'a) 'trace-on);;测试寄存器跟踪
     (start gcd-machine)
+    (funcall (funcall gcd-machine 'print-execute-count));;测试指令计数
     (get-register-contents gcd-machine 'a)))
 
 (defun test-demo-3 ()
@@ -369,7 +389,7 @@
 					(print "Please input:")
 					(read)))
 			  (list 'print (lambda (v)
-						(print v))))
+					 (print v))))
 		    '(
 		      start
 		      (init-stack)
@@ -396,6 +416,7 @@
 		      (print-statistics)
 		      (goto (label start))))))
     (start n-machine)))
-    
-		      
-	
+
+(defun set-breakpoint (machine label n)
+  )
+
