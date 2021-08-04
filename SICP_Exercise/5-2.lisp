@@ -13,6 +13,10 @@
 			gcd-done))))
     (set-register-contents gcd-machine 'a 206)
     (set-register-contents gcd-machine 'b 40)
+    (set-breakpoint gcd-machine 'test-b 4)
+    (set-breakpoint gcd-machine 'test-b 3)
+    (cancel-breakpoint gcd-machine 'test-b 4)
+					;(cancel-all-breakpoints gcd-machine)
     (start gcd-machine)
     (get-register-contents gcd-machine 'a)))
 
@@ -113,12 +117,14 @@
 			(let ((insts (get-contents pc)))
 			  (if (null insts)
 			      'done
-			    (progn
-			      (if trace-flag
-				  (format t "execute : ~A~%" (caar insts)));;指令追踪
-			      (funcall (instruction-execution-proc (car insts)))
-			      (setf execute-count (1+ execute-count));;指令计数
-			      (execute))))))
+			    (if (instruction-breakpoint (car insts))
+				'break
+			      (progn
+				(if trace-flag
+				    (format t "execute : ~A~%" (caar insts)));;指令追踪
+				(funcall (instruction-execution-proc (car insts)))
+				(setf execute-count (1+ execute-count));;指令计数
+				(execute)))))))
 	      (lambda (message)
 		(case message
 		      ('start (set-contents pc the-instruction-sequence)
@@ -129,11 +135,22 @@
 		      ('install-operations (lambda (ops) (setf the-ops (append the-ops ops))))
 		      ('stack stack)
 		      ('operations the-ops)
+		      ('instructions the-instruction-sequence)
 		      ('trace-on (setf trace-flag t))
 		      ('trace-off (setf trace-flag nil))
 		      ('print-execute-count (lambda ()
 					      (format t "execute-count: ~A~%" execute-count)
 					      (setf execute-count 0)))
+		      ('continue-break
+		       (let ((insts (get-contents pc)))
+			 (if (null insts)
+			     'done
+			   (progn
+			     (if trace-flag
+				 (format t "execute : ~A~%" (caar insts)));;指令追踪
+			     (funcall (instruction-execution-proc (car insts)))
+			     (setf execute-count (1+ execute-count));;指令计数
+			     (execute)))))
 		      (otherwise (error "Unknown request -- MACHINE" message))))))))
 
 (defun start (machine)
@@ -182,18 +199,33 @@
 	(flag (get-register machine 'flag))
 	(stack (funcall machine 'stack))
 	(ops (funcall machine 'operations)))
+    (dolist (label labels)
+      (dolist (inst (cdr label))
+	(set-instruction-label inst (car label))))
     (dolist (inst insts)
       (set-instruction-execution-proc inst
 				      (make-execution-procedure (instruction-text inst) labels machine pc flag stack ops)))))
 
 (defun make-instruction (text)
-  (cons text '()))
+  (cons (list nil nil text) '()))
 
 (defun instruction-text (inst)
-  (car inst))
+  (nth 2 (car inst)))
+
+(defun instruction-label (inst)
+  (nth 0 (car inst)))
 
 (defun instruction-execution-proc (inst)
   (cdr inst))
+
+(defun set-instruction-label (inst label-name)
+  (setf (nth 0 (car inst)) label-name))
+
+(defun set-instruction-breakpoint (inst break-on)
+  (setf (nth 1 (car inst)) break-on))
+
+(defun instruction-breakpoint (inst)
+  (nth 1 (car inst)))
 
 (defun set-instruction-execution-proc (inst proc)
   (setf (cdr inst) proc))
@@ -418,5 +450,28 @@
     (start n-machine)))
 
 (defun set-breakpoint (machine label n)
-  )
+  (labels ((iter (insts)
+		 (cond
+		  ((null insts) nil)
+		  ((equal label (instruction-label (car insts)))
+		   (set-instruction-breakpoint (nth (- n 1) insts) t))
+		  (t (iter (cdr insts))))))
+	  (iter (funcall machine 'instructions))))
+
+
+(defun proceed-machine (machine)
+  (funcall machine 'continue-break))
+
+(defun cancel-breakpoint (machine label n)
+  (labels ((iter (insts)
+		 (cond
+		  ((null insts) nil)
+		  ((equal label (instruction-label (car insts)))
+		   (set-instruction-breakpoint (nth (- n 1) insts) nil))
+		  (t (iter (cdr insts))))))
+	  (iter (funcall machine 'instructions))))
+
+(defun cancel-all-breakpoints (machine)
+  (dolist (inst (funcall machine 'instructions))
+    (set-instruction-breakpoint inst nil)))
 
