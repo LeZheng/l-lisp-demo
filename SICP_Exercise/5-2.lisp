@@ -474,4 +474,3 @@
 (defun cancel-all-breakpoints (machine)
   (dolist (inst (funcall machine 'instructions))
     (set-instruction-breakpoint inst nil)))
-
