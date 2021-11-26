@@ -1,3 +1,92 @@
+;;;;0.0 parser start
+;;;TODO 这个解析器需要重写，把词法分析和语法分析分开
+(defun subseq-and-trim (&rest s)
+  (string-trim '(#\Space #\Tab #\NewLine)
+	       (apply #'subseq s)))
+
+(defun start-with (s prefix)
+  (= (string/= s prefix) (length prefix)))
+
+(defun skip-prefix (s prefix)
+  (let ((start (string/= s prefix)))
+    (if (= start (length prefix))
+	(subseq-and-trim s start)
+      (error "skip failed:~A" prefix))))
+
+(defun scan&parse (s)
+  (list 'a-program
+	(parse-expression s)))
+
+(defun parse-expression (s)
+  (cond
+   ((start-with s "zero? ")
+    (parse-zero?-exp s))
+   ((start-with s "if ")
+    (parse-if-exp s))
+   ((start-with s "let ")
+    (parse-let-exp s))
+   ((or (start-with s "- ") (start-with s "-("))
+    (parse-diff-exp s))
+   ((numberp (read-from-string s))
+    (parse-const-exp s))
+   ((symbolp (read-from-string s))
+    (parse-var-exp s))
+   (t (error "unknown expression:~A~%" s))))
+
+(defun parse-zero?-exp (s)
+  (let ((exp1-start (1+ (or (position #\( s)
+			    (error "parse-zero?-exp:position #\( error")))))
+    (multiple-value-bind
+     (exp1 s) (parse-expression (subseq-and-trim s exp1-start))
+     (let ((exp-end (1+ (or (position #\) s)
+			    (error "parse-zero?-exp:position #\) error")))))
+       (values (list 'zero?-exp exp1)
+	       (subseq-and-trim s exp-end))))))
+
+(defun parse-const-exp (s)
+  (multiple-value-bind
+   (num exp-end) (read-from-string s)
+   (values (list 'const-exp num)
+	   (subseq-and-trim s exp-end))))
+
+(defun parse-var-exp (s)
+  (multiple-value-bind
+   (var exp-end) (read-from-string s)
+   (values (list 'var-exp var)
+	   (subseq-and-trim s exp-end))))
+
+(defun parse-diff-exp (s)
+  (multiple-value-bind
+   (exp1 s) (parse-expression (subseq-and-trim
+			       s
+			       (1+ (or (position #\( s)
+				       (error "parse-diff-exp:position #\( error")))))
+   (multiple-value-bind
+    (exp2 s) (parse-expression (subseq-and-trim
+				s
+				(1+ (or (position #\, s)
+					(error "parse-diff-exp:position #\, error")))))
+    (values (list 'diff-exp exp1 exp2) s))))
+
+(defun parse-if-exp (s)
+  (multiple-value-bind
+   (exp1 s) (parse-expression (skip-prefix "if"))
+   (multiple-value-bind
+    (exp2 s) (parse-expression (skip-prefix "then"))
+    (multiple-value-bind
+     (exp3 s) (parse-expression (skip-prefix "else"))
+     (values (list 'if-exp exp1 exp2 exp3) s)))))
+
+(defun parse-let-exp (s)
+  (multiple-value-bind
+   (var s) (parse-expression (skip-prefix "let"))
+   (multiple-value-bind
+    (exp1 s) (parse-expression (skip-prefix "="))
+    (multiple-value-bind
+     (body s) (parse-expression (skip-prefix "in"))
+     (values (list 'let-exp var exp1 body) s)))))	    
+;;;;0.0 parser end
+
 (defun empty-env ()
   (list 'empty-env))
 (defun extend-env (var val env)
@@ -22,64 +111,55 @@
 
 (defmacro define-datatype (type-name type-predicate-name &rest variants)
   (let ((variant-pred-list (mapcar (lambda (v)
-				     (make-symbol (concatenate 'string
-							       (symbol-name (car v))
-							       "?")))
+				     (intern (concatenate 'string
+							  (symbol-name (car v))
+							  "?")))
 				   variants)))
-    (setf (symbol-function type-predicate-name)
-	  (lambda (e)
-	    (some (lambda (p) (funcall p e)) variant-pred-list)))
-    (dolist (variant-exp variants)
-      (let ((variant-name (car variant-exp))
-	    (variant-fields (cdr variant-exp)))
-	(setf (symbol-function variant-name);;variant constructor
-	      (lambda (&rest fields)
-		(cons variant-name
-		      (mapcar
-		       (lambda (pred field)
-			 (if (or (null pred) (funcall pred field))
-			     field
-			   (error "field[~s] init failed." field)))
-		       (mapcar #'cadr variant-fields)
-		       fields))))
-	(setf (symbol-function (make-symbol (concatenate 'string ;;variant predicte
-							 (symbol-name variant-name)
-							 "?")))
-	      (lambda (e)
-		(eql (car e) variant-name)))
-	(loop for i from 0 below (length variant-fields)
-	      for field in variant-fields
-	      do (let ((index i))
-		   (setf (symbol-function (make-symbol (concatenate 'string
-								    (symbol-name variant-name)
-								    "->"
-								    (symbol-name (car field)))))
-			 (lambda (e)
-			   (nth index (cdr e))))))))))
+    `(progn
+       (defun ,type-predicate-name (e)
+	 (some (lambda (p) funcall p e) ,variant-pred-list))
+       ,@(mapcar (lambda (variant-exp)
+		   (let* ((variant-name (car variant-exp))
+			  (variant-fields (cdr variant-exp))
+			  (variant-pred (intern (concatenate 'string
+							     (symbol-name variant-name)
+							     "?"))))
+		     `(progn
+			(defun ,variant-name (&rest fields)
+			  (cons ',variant-name
+				(mapcar (lambda (pred field)
+					  (if (funcall pred field)
+					      field
+					    (error "field[~s] init field." field)))
+					(mapcar #'cadr ',variant-fields)
+					fields)))
+			(defun ,variant-pred (e)
+			  (eql (car e) ',variant-name))
+			,@(loop for i from 0 below (length variant-fields)
+				for field in variant-fields
+				collect `(let ((index (+ 1 ,i)))
+					   (defun ,(intern (concatenate 'string
+									(symbol-name variant-name)
+									"->"
+									(symbol-name (car field)))) (e)
+					     (nth index e)))))))
+		 variants))))
 
 (defmacro cases (type-name expression &rest clauses)
-  (let ((cond-clauses (mapcar (lambda (c)
-				(let ((variant-name (car c)))
-				  (if (eql variant-name 'else)
-				      (cons t (cdr c))
-				    (let ((var-pred
-					   (make-symbol (concatenate 'string
-								     (symbol-name variant-name)
-								     "?")))
-					  (field-let-list
-					   (mapcar (lambda (f)
-						     (list f (list (make-symbol (concatenate 'string
-											     (symbol-name variant-name)
-											     "->"
-											     (symbol-name f)))
-								   expression)))
-						   (cadr c)))
-					  (consequent (cddr c)))
-				      `((,var-pred ,expression)
-					(let ,field-let-list
-					  consequent))))))
-			      clauses)))
-    `(cond ,cond-clauses))) 
+  (let ((exp-sym (gensym)))
+    `(let ((,exp-sym ,expression))
+       (cond ,@(mapcar (lambda (c)
+			 (let ((variant-name (car c)))
+			   (if (eql variant-name 'else)
+			       `(t ,(cdr c))
+			     (let ((var-pred (intern (concatenate 'string (symbol-name variant-name) "?")))
+				   (bound-var-list (cadr c)))
+			       `((,var-pred ,exp-sym)
+				 (let ,(loop for i from 0 below (length bound-var-list)
+					     for var in bound-var-list
+					     collect (list var `(nth (1+ ,i) ,exp-sym)))
+				   ,@(cddr c)))))))
+		       clauses)))))
 
 (defun split-symbol-p (c)
   (case c
@@ -333,12 +413,15 @@
 
 ;;exercise 3.6
 ;;见value-of和expression的定义中对minus的处理
+;;解析器的调整 TODO
 
 ;;;exercise 3.7
 ;;见上方对add、mul和div的处理
+;;解析器的调整 TODO
 
 ;;;exercise 3.8
-;;TODO
+;;见上方对equal、greater和less的处理
+;;解析器的调整 TODO
 
 ;;;exercise 3.9
 ;;TODO

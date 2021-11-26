@@ -315,58 +315,56 @@
 ;;;;2.4
 (defmacro define-datatype (type-name type-predicate-name &rest variants)
   (let ((variant-pred-list (mapcar (lambda (v)
-				     (make-symbol (concatenate 'string
+				     (intern (concatenate 'string
 							       (symbol-name (car v))
 							       "?")))
 				   variants)))
-    (setf (symbol-function type-predicate-name)
-	  (lambda (e)
-	    (some (lambda (p) (funcall p e)) variant-pred-list)))
-    (dolist (variant-exp variants)
-      (let ((variant-name (car variant-exp))
-	    (variant-fields (cdr variant-exp)))
-	(setf (symbol-function variant-name);;variant constructor
-	      (lambda (&rest fields)
-		(mapcar
-		 (lambda (pred field)
-		   (if (funcall pred field)
-		       field
-		     (error "field[~s] init failed." field)))
-		 (mapcar #'cadr variant-fields)
-		 fields)))
-	(loop for i from 0 below (length variant-fields)
-	      for field in variant-fields
-	      do (let ((index i))
-		   (setf (symbol-function (make-symbol (concatenate 'string
-								    (symbol-name variant-name)
-								    "->"
-								    (symbol-name (car field)))))
-			 (lambda (e)
-			   (nth index e)))))))))
+    `(progn
+       (defun ,type-predicate-name (e)
+	 (some (lambda (p) funcall p e) ,variant-pred-list))
+       ,@(mapcar (lambda (variant-exp)
+		   (let* ((variant-name (car variant-exp))
+			  (variant-fields (cdr variant-exp))
+			  (variant-pred (intern (concatenate 'string
+								  (symbol-name variant-name)
+								  "?"))))
+		     `(progn
+			(defun ,variant-name (&rest fields)
+			  (cons ',variant-name
+				(mapcar (lambda (pred field)
+					  (if (funcall pred field)
+					      field
+					    (error "field[~s] init field." field)))
+					(mapcar #'cadr ',variant-fields)
+					fields)))
+			(defun ,variant-pred (e)
+			  (eql (car e) ',variant-name))
+			,@(loop for i from 0 below (length variant-fields)
+				for field in variant-fields
+				collect `(let ((index (+ 1 ,i)))
+					   (defun ,(intern (concatenate 'string
+									     (symbol-name variant-name)
+									     "->"
+									     (symbol-name (car field)))) (e)
+					     (nth index e)))))))
+		 variants))))
 
 (defmacro cases (type-name expression &rest clauses)
-  (let ((cond-clauses (mapcar (lambda (c)
-				(let ((variant-name (car c)))
-				  (if (eql variant-name 'else)
-				      (cons t (cdr c))
-				    (let ((var-pred
-					   (make-symbol (concatenate 'string
-								     (symbol-name variant-name)
-								     "?")))
-					  (field-let-list
-					   (mapcar (lambda (f)
-						     (list f (list (make-symbol (concatenate 'string
-											     (symbol-name variant-name)
-											     "->"
-											     (symbol-name f)))
-								   expression)))
-						   (cadr c)))
-					  (consequent (cddr c)))
-				      `((,var-pred ,expression)
-					(let ,field-let-list
-					  consequent))))))
-			      clauses)))
-    `(cond ,cond-clauses)))
+  (let ((exp-sym (gensym)))
+    `(let ((,exp-sym ,expression))
+       (cond ,@(mapcar (lambda (c)
+		     (let ((variant-name (car c)))
+		       (if (eql variant-name 'else)
+			   `(t ,(cdr c))
+			 (let ((var-pred (intern (concatenate 'string (symbol-name variant-name) "?")))
+			       (bound-var-list (cadr c)))
+			   `((,var-pred ,exp-sym)
+			     (let ,(loop for i from 0 below (length bound-var-list)
+					  for var in bound-var-list
+					  collect (list var `(nth (1+ ,i) ,exp-sym)))
+			       ,@(cddr c)))))))
+		       clauses)))))
+			       
 
 ;;;exercise 2.21
 (define-datatype env env?
