@@ -1,4 +1,4 @@
-(defvar the-lexical-spec
+(setf the-lexical-spec
   '((whitespace ((or #\Space #\NewLine) (arbno (or #\Space #\NewLine))) skip)
     (comment ("%" (arbno (not #\newline))) skip)
     (identifier
@@ -8,7 +8,7 @@
     (number ("-" digit (arbno digit)) number)
     ))
 
-(defvar the-grammar
+(setf the-grammar
   '((program (expression) a-program)
 
     (expression (number) const-exp)
@@ -35,17 +35,17 @@
 (defun make-token (class-name data)
   (list class-name data))
 
-(defun make-string-scanner (scanner-spec grammar)
+(defun make-string-scanner (scanner-spec)
   (lambda (str)
     (with-input-from-string
      (stream str)
-     (scan-stream stream scanner-spec grammar))))
+     (scan-stream stream scanner-spec))))
 
-(defun make-stream-scanner (scanner-spec grammar)
+(defun make-stream-scanner (scanner-spec)
   (lambda (stream)
-    (scan-stream stream scanner-spec grammar)))
+    (scan-stream stream scanner-spec)))
 
-(defun scan-stream (stream scanner-spac grammar)
+(defun scan-stream (stream scanner-spac)
   (let* ((token-list '())
 	 (scanner-list (mapcar #'token-spec->scanner scanner-spac))
 	 (temp-scanners scanner-list)
@@ -66,7 +66,6 @@
 	    (let ((scan-result (car (sort (mapcar (lambda (s) (if (vectorp s) (svref s 0) s)) temp-scanners)
 					  #'> :key #'length)))
 		  (buffered-str (coerce (reverse buffer) 'string)))
-	      (format T "scan:~A ~A ~A~%" buffer scan-result temp-scanners)
 	      (destructuring-bind
 		    (token-string name action) scan-result
 		(ecase action
@@ -94,7 +93,7 @@
 				    (funcall receiver (append char-seq char-seq2))))
 		 (funcall receiver char-seq))))
 	 (make-single-char-scanner (regexp receiver char-tester)
-	   (lambda (c) 
+	   (lambda (c)
 	     (if (funcall char-tester c)
 		 (if (cdr regexp)
 		     (regexp->scanner (cdr regexp) (lambda (s) (funcall receiver (cons c s))))
@@ -106,11 +105,9 @@
 	       ((stringp exp)
 		(regexp->scanner
 		 (cons (cons 'concat (coerce exp 'list)) (cdr regexp))
-		 (make-concat-receiver regexp receiver)))
+		 receiver))
 	       ((consp exp)
-		(regexp->scanner
-		 exp
-		 (make-concat-receiver regexp receiver)))
+		(regexp->scanner exp (make-concat-receiver regexp receiver)))
 	       ((characterp exp)
 		(make-single-char-scanner regexp receiver (lambda (c) (eql c exp))))
 	       ((eql exp 'letter)
@@ -120,14 +117,13 @@
 	       ((eql exp 'any)
 		(make-single-char-scanner regexp receiver (constantly t)))
 	       ((eql exp 'not)
-		(make-single-char-scanner regexp receiver (lambda (c) (not (eql c (cadr exp))))))
+		(make-single-char-scanner regexp receiver (lambda (c) (not (eql c (cadr regexp))))))
 	       ((eql exp 'whitespace)
 		(regexp->scanner
 		 '((or #\Space #\NewLine) (arbno (or #\Space #\NewLine)))
 		 (make-concat-receiver regexp receiver)))
 	       ((eql exp 'or)
-		(let ((scanners (mapcar (lambda (e)
-					  (regexp->scanner (cons e nil) #'identity))
+		(let ((scanners (mapcar (lambda (e) (regexp->scanner (cons e nil) #'identity))
 					(cdr regexp))))
 		  (labels
 		      ((make-or-scan (or-scanners)
@@ -153,10 +149,7 @@
 		    (make-or-scan scanners))))
 	       ((eql exp 'arbno)
 		(lambda (c)
-		  (let ((r (funcall 
-			    (regexp->scanner (cdr regexp)
-					     (lambda (s) s));;todo
-			    c)))
+		  (let ((r (funcall (regexp->scanner (cdr regexp) #'identity) c)))
 		    (labels
 			((handle-result (r)
 			   (etypecase r
@@ -171,9 +164,7 @@
 			      (vector (funcall receiver nil) c)))))
 		      (handle-result r)))))
 	       ((eql exp 'concat)
-		(regexp->scanner
-		 (cdr regexp)
-		 (make-concat-receiver regexp receiver)))
+		(regexp->scanner (cdr regexp) receiver))
 	       (t (error "Unknown expression:~A~%" exp))))))
       (regexp->scanner regexp (lambda (s) (list (coerce s 'string) name action))))))
 
@@ -181,5 +172,8 @@
   ;;todo
   )
 
+(defun test-scan ()
+  (funcall (make-string-scanner the-lexical-spec)
+	   "asdf  1234  -4321   % skdlajf"))
 
 
