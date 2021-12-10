@@ -1,37 +1,3 @@
-(setf the-lexical-spec
-  '((whitespace ((or #\Space #\NewLine) (arbno (or #\Space #\NewLine))) skip)
-    (comment ("%" (arbno (not #\newline))) skip)
-    (identifier
-     (letter (arbno (or letter digit "_" "-" "?")))
-     symbol)
-    (number (digit (arbno digit)) number)
-    (number ("-" digit (arbno digit)) number)
-    ))
-
-(setf the-grammar
-  '((program (expression) a-program)
-
-    (expression (number) const-exp)
-    (expression
-     ("-" "(" expression "," expression ")")
-     diff-exp)
-    
-    (expression
-     ("zero?" "(" expression ")")
-     zero?-exp)
-
-    (expression
-     ("if" expression "then" expression "else" expression)
-     if-exp)
-
-    (expression (identifier) var-exp)
-
-    (expression
-     ("let" identifier "=" expression "in" expression)
-     let-exp)   
-
-    ))
-
 (defun make-token (class-name data)
   (list class-name data))
 
@@ -81,7 +47,6 @@
 		(setf temp-scanners scanner-list)
 		(setf buffer '()))))))))
 
-;;;scanner: (char) -> scanner | token | nil
 (defun token-spec->scanner (raa)
   (destructuring-bind (name regexp action) raa
     (labels
@@ -168,26 +133,44 @@
 	       (t (error "Unknown expression:~A~%" exp))))))
       (regexp->scanner regexp (lambda (s) (list (coerce s 'string) name action))))))
 
-(defun parse-token (scanner-spec grammar-spec token-list)
+(defun parse-token (grammar-spec token-list)
   (let ((prod-parser-table (make-hash-table)))
     (dolist (production grammar-spec)
       (destructuring-bind (lhs rhs-list prod-name) production
 	(push (production->parser production prod-parser-table) (gethash lhs prod-parser-table))))
     (let* ((parser-list (maphash (lambda (k v) v) prod-parser-table))
 	   (temp-parsers parser-list))
-      ;;todo
-      ))
-  )
+      (labels
+	  ((iter (token-list parsers receiver)
+	     (if (null token-list)
+		 (funcall receiver nil)
+		 (let ((temps (mapcan (lambda (r)
+					(and (or (functionp r) (consp r) (and (vectorp r) (consp (svref r 0)))) (list r)))
+				      (mapcar (lambda (parser)
+						(etypecase parser
+						  (function (funcall parser (car token-list)))
+						  (cons (vector r (cons (car token-list) nil)))
+						  (vector (vector (svref r 0) (nconc (svref r 1) (cons (car token-list) nil))))))
+					      parsers))))
+		   (if (some #'functionp temps)
+		       (iter (cdr token-list) temps receiver)
+		       (let ((r (car (sort temps #'< :key (lambda (p) (etypecase p
+									(cons 0)
+									(vector (length (svref p 1)))))))))
+			 (etypecase r
+			   (cons (iter (cdr token-list) parser-list (lambda (gs) (cons r gs))))
+			   (vector (iter (append (svref r 1) (cdr token-list)) parser-list (lambda (gs) (cons (svref r 0) gs)))))))))))
+	(iter token-list parser-list #'identity)))))
 
 (defun production->parser (production parser-table)
   (destructuring-bind (lhs rhs-list prod-name) production
     (labels
-	((rhs->parser (remain-rhs receiver)
+	((rhs->parser (remain-rhs receiver backouter)
 	   (let ((rhs (car remain-rhs)))
 	     (cond
 	       ((symbolp rhs);;todo
 		(labels
-		    ((parse-lhs (parsers)
+		    ((parse-lhs (parsers buffer)
 		       (lambda (token)
 			 (if (null parsers)
 			     (error "Unexpected symbol:~A~%" rhs)
@@ -198,69 +181,128 @@
 						  parsers))
 				    (r (find-if #'consp temp)))
 			       (if r 
-				   (rhs->parser (cdr remain-rhs) (lambda (p) (cons r p)))
+				   (rhs->parser (cdr remain-rhs)
+						(lambda (p) (cons r p))
+						(lambda (ts) (funcall backouter (append (reverse (cons token buffer)) ts))))
 				   (if (some #'functionp temp)
-				       (parse-lhs temp)
-				       nil)))))))
-		  (parse-lhs (gethash rhs parser-table))))
+				       (parse-lhs temp (cons token buffer))
+				       (vector nil (funcall backouter (reverse (cons token buffer)))))))))))
+		  (parse-lhs (gethash rhs parser-table) nil)))
 	       ((stringp rhs)
 		(lambda (token)
 		  (if (string-equal rhs token)
 		      (rhs->parser (cdr remain-rhs) #'identity)
-		      nil)))
+		      (vector nil (cons token nil)))))
 	       ((consp rhs)
-		(rhs-parser rhs (lambda (r1)
-				  (if (cdr remain-rhs)
-				      (rhs->parser (cdr remain-rhs)
-						  (lambda (r2)
-						    (funcall receiver (append r1 r2))))
-				      (funcall receiver r1)))))
+		(lambda (token)
+		  (funcall (rhs-parser rhs
+				       (lambda (r1)
+					 (if (cdr remain-rhs)
+					     (rhs->parser (cdr remain-rhs)
+							  (lambda (r2)
+							    (funcall receiver (append r1 r2)))
+							  (lambda (ts) (funcall backouter (cons token ts))))
+					     (funcall receiver r1)))
+				       backouter)
+			   token)))
 	       ((eql 'arbno rhs)
 		(lambda (token)
-		  (let ((r (funcall (rhs->parser (cdr remain-rhs) #'identity) token)))
+		  (let ((r (funcall (rhs->parser (cdr remain-rhs) #'identity backouter) token)))
 		    (labels
-			((handle-result (r)
+			((handle-result (r buffer)
 			   (etypecase r
 			     (cons
-			      (rhs->parser remain-rhs (lambda (r2) (funcall receiver (mapcar #'cons r r2)))))
+			      (rhs->parser remain-rhs (lambda (r2) (funcall receiver (mapcar #'cons r r2)))
+					   (lambda (ts) (funcall backouter (append (reverse buffer) ts)))))
 			     (function
 			      (lambda (token)
-			       (handle-result (funcall r token))))
+			       (handle-result (funcall r token) (cons token buffer))))
 			     (vector
 			      (vector (funcall receiver (svref r 0)) (svref r 1)))
 			     (null
-			      (vector (funcall receiver nil) t)))))
-		      (handle-result r)))))
+			      (vector (funcall receiver nil) (funcall backouter (reverse buffer)))))))
+		      (handle-result r (cons token nil))))))
 	       ((eql 'separated-list rhs)
 		(lambda (token)
-		  (let ((r (funcall (rhs-parser (butlast (cdr remain-rhs)) #'identity) token)))
+		  (let ((r (funcall (rhs-parser (butlast (cdr remain-rhs)) #'identity backouter) token)))
 		    (labels
-			((handle-result (r)
+			((handle-result (r buffer)
 			   (etypecase r
 			     (cons
 			      (lambda (token)
 				(if (string-equal token (car (last remain-rhs)))
-				    (rhs->parser remain-rhs (lambda (r2) (funcall receiver (mapcar #'cons r r2))))
-				    (vector (funcall receiver) t)))
-			      (rhs->parser remain-rhs (lambda (r2) (funcall receiver (mapcar #'cons r r2)))))
+				    (rhs->parser remain-rhs (lambda (r2) (funcall receiver (mapcar #'cons r r2)))
+						 (lambda (ts) (funcall backouter (append (reverse (cons token buffer)) ts))))
+				    (vector (funcall receiver nil) (funcall backouter (append (reverse (cons token buffer)) ts))))))
 			     (function
 			      (lambda (token)
-			       (handle-result (funcall r token))))
+			       (handle-result (funcall r token) (cons token buffer))))
 			     (vector
 			      (vector (funcall receiver (svref r 0)) (svref r 1)))
 			     (null
-			      (vector (funcall receiver nil) t)))))
-		      (handle-result r)))))
-	       (t (error "Unexpected rhs:~A~%" rhs))))
-	   ))
-      (rhs->parser rhs-list (lambda (r) (list prod-name r))))))
+			      (vector (funcall receiver nil) (funcall backouter (reverse buffer)))))))
+		      (handle-result r (cons token nil))))))
+	       (t (error "Unexpected rhs:~A~%" rhs))))))
+      (rhs->parser rhs-list (lambda (r) (list prod-name r)) #'identity))))
 
-(reduce (lambda (data r)
-	  (list (cons (car data))))
-	data1 :initial-value (list nil nil))
+(defun make-string-parser (the-lexical-spec the-grammar)
+  (labels ((find-keywords (rhs-items receiver)
+	     (if (null rhs-items)
+		 (funcall receiver nil)
+		 (etypecase (car rhs-items)
+		   (string (find-keywords (cdr rhs-items) (lambda (ks) (funcall receiver (cons (car rhs-items) ks)))))
+		   (symbol (find-keywords (cdr rhs-items) receiver))
+		   (cons (let ((cks (find-keywords (car rhs-items) #'identity)))
+			   (find-keywords (cdr rhs-items) (lambda (ks) (funcall receiver (append cks ks))))))))))
+    (let* ((ext-lexical-spec `((or ,@(reduce #'union
+					     (mapcar
+					      (lambda (production) (find-keywords (cadr production) #'identity))
+					      the-grammar)))
+			       ,the-lexical-spec))
+	   (scanner (make-string-scanner ext-lexical-spec)))
+      (lambda (s)
+	(let ((token-list (funcall scanner s)))
+	  (format t "token-list:~A~%" token-list)
+	  (parse-token the-grammar (mapcar #'cadr token-list)))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; test ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(setf the-lexical-spec
+  '((whitespace ((or #\Space #\NewLine) (arbno (or #\Space #\NewLine))) skip)
+    (comment ("%" (arbno (not #\newline))) skip)
+    (identifier
+     (letter (arbno (or letter digit "_" "-" "?")))
+     symbol)
+    (number (digit (arbno digit)) number)
+    (number ("-" digit (arbno digit)) number)
+    ))
+
+(setf the-grammar
+  '((program (expression) a-program)
+
+    (expression (number) const-exp)
+    (expression
+     ("-" "(" expression "," expression ")")
+     diff-exp)
+    
+    (expression
+     ("zero?" "(" expression ")")
+     zero?-exp)
+
+    (expression
+     ("if" expression "then" expression "else" expression)
+     if-exp)
+
+    (expression (identifier) var-exp)
+
+    (expression
+     ("let" (arbno identifier "=" expression) "in" expression)
+     let-exp)   
+
+    ))
 
 (defun test-scan ()
   (funcall (make-string-scanner the-lexical-spec)
 	   "asdf  1234  -4321   % skdlajf"))
 
-
+(defun scan&parse1 (s)
+  (funcall (make-string-parser the-lexical-spec the-grammar) s))
