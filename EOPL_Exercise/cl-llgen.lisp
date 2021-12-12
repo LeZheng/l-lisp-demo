@@ -16,7 +16,6 @@
 	 (scanner-list (mapcar #'token-spec->scanner scanner-spac))
 	 (temp-scanners scanner-list)
 	 (buffer '()))
-    (format t "scanner-list:~A~%" scanner-list)
     (do ((c (read-char stream) (read-char stream nil 'end-of-stream)))
 	((not (characterp c)) (reverse token-list))
       (push c buffer)
@@ -39,7 +38,6 @@
 		  (symbol (push (make-token name (make-symbol token-string)) token-list))
 		  (number (push (make-token name (read-from-string token-string)) token-list))
 		  (string (push (make-token name token-string) token-list)))
-		(format t "token-list updated:~A~%" token-list)
 		(if (string> buffered-str token-string)
 		    (setf stream (make-concatenated-stream
 				  (make-string-input-stream (subseq buffered-str (length token-string)))
@@ -138,10 +136,11 @@
     (dolist (production grammar-spec)
       (destructuring-bind (lhs rhs-list prod-name) production
 	(push (production->parser production prod-parser-table) (gethash lhs prod-parser-table))))
-    (let* ((parser-list (maphash (lambda (k v) v) prod-parser-table))
-	   (temp-parsers parser-list))
+    (let ((parser-list '()))
+      (maphash (lambda (k v) (setf parser-list (append parser-list v))) prod-parser-table)
       (labels
 	  ((iter (token-list parsers receiver)
+	     (format t "iter:~A~%" (car token-list))
 	     (if (null token-list)
 		 (funcall receiver nil)
 		 (let ((temps (mapcan (lambda (r)
@@ -152,6 +151,7 @@
 						  (cons (vector r (cons (car token-list) nil)))
 						  (vector (vector (svref r 0) (nconc (svref r 1) (cons (car token-list) nil))))))
 					      parsers))))
+		   (format t "temps:~A ~A~%" temps parsers)
 		   (if (some #'functionp temps)
 		       (iter (cdr token-list) temps receiver)
 		       (let ((r (car (sort temps #'< :key (lambda (p) (etypecase p
@@ -168,34 +168,45 @@
 	((rhs->parser (remain-rhs receiver backouter)
 	   (let ((rhs (car remain-rhs)))
 	     (cond
-	       ((symbolp rhs);;todo
+	       ((and (symbolp rhs) (not (equal rhs 'arbno)) (not (equal rhs 'separated-list)))
 		(labels
 		    ((parse-lhs (parsers buffer)
 		       (lambda (token)
+			 (format t "parse-lhs:~A ~A~%" token rhs)
 			 (if (null parsers)
-			     (error "Unexpected symbol:~A~%" rhs)
+			     (if (equal rhs (car token))
+				 (if (cdr remain-rhs)
+				     (rhs->parser (cdr remain-rhs)
+					      (lambda (p) (cons (cadr token) p))
+					      (lambda (ts) (funcall backouter (append (reverse (cons token buffer)) ts))))
+				     (funcall receiver (cons (cadr token) nil)))
+				 (vector nil (funcall backouter (reverse (cons token buffer)))))
 			     (let* ((temp (mapcar (lambda (parser)
 						    (if (functionp parser)
 							(funcall parser token)
 							parser))
 						  parsers))
 				    (r (find-if #'consp temp)))
-			       (if r 
-				   (rhs->parser (cdr remain-rhs)
+			       (if r
+				   (if (cdr remain-rhs)
+				       (rhs->parser (cdr remain-rhs)
 						(lambda (p) (cons r p))
 						(lambda (ts) (funcall backouter (append (reverse (cons token buffer)) ts))))
+				       (funcall receiver r))
 				   (if (some #'functionp temp)
 				       (parse-lhs temp (cons token buffer))
 				       (vector nil (funcall backouter (reverse (cons token buffer)))))))))))
 		  (parse-lhs (gethash rhs parser-table) nil)))
 	       ((stringp rhs)
 		(lambda (token)
-		  (if (string-equal rhs token)
-		      (rhs->parser (cdr remain-rhs) #'identity)
+		  (if (string-equal rhs (cadr token))
+		      (if (cdr remain-rhs)
+			  (rhs->parser (cdr remain-rhs) #'identity (lambda (ts) (funcall backouter (cons token ts))))
+			  (funcall receiver nil))
 		      (vector nil (cons token nil)))))
 	       ((consp rhs)
 		(lambda (token)
-		  (funcall (rhs-parser rhs
+		  (funcall (rhs->parser rhs
 				       (lambda (r1)
 					 (if (cdr remain-rhs)
 					     (rhs->parser (cdr remain-rhs)
@@ -207,7 +218,7 @@
 			   token)))
 	       ((eql 'arbno rhs)
 		(lambda (token)
-		  (let ((r (funcall (rhs->parser (cdr remain-rhs) #'identity backouter) token)))
+		  (let ((r (funcall (rhs->parser (cdr remain-rhs) #'identity #'identity) token)))
 		    (labels
 			((handle-result (r buffer)
 			   (etypecase r
@@ -230,7 +241,7 @@
 			   (etypecase r
 			     (cons
 			      (lambda (token)
-				(if (string-equal token (car (last remain-rhs)))
+				(if (string-equal (cadr token) (car (last remain-rhs)))
 				    (rhs->parser remain-rhs (lambda (r2) (funcall receiver (mapcar #'cons r r2)))
 						 (lambda (ts) (funcall backouter (append (reverse (cons token buffer)) ts))))
 				    (vector (funcall receiver nil) (funcall backouter (append (reverse (cons token buffer)) ts))))))
@@ -254,16 +265,18 @@
 		   (symbol (find-keywords (cdr rhs-items) receiver))
 		   (cons (let ((cks (find-keywords (car rhs-items) #'identity)))
 			   (find-keywords (cdr rhs-items) (lambda (ks) (funcall receiver (append cks ks))))))))))
-    (let* ((ext-lexical-spec `((or ,@(reduce #'union
-					     (mapcar
-					      (lambda (production) (find-keywords (cadr production) #'identity))
-					      the-grammar)))
-			       ,the-lexical-spec))
+    (let* ((ext-lexical-spec `((keyword
+				(or ,@(reduce #'union
+					      (mapcar
+					       (lambda (production) (find-keywords (cadr production) #'identity))
+					       the-grammar)))
+				string)
+			       ,@the-lexical-spec))
 	   (scanner (make-string-scanner ext-lexical-spec)))
       (lambda (s)
 	(let ((token-list (funcall scanner s)))
 	  (format t "token-list:~A~%" token-list)
-	  (parse-token the-grammar (mapcar #'cadr token-list)))))))
+	  (parse-token the-grammar token-list))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; test ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (setf the-lexical-spec
