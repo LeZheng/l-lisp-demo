@@ -145,13 +145,12 @@
 		 (funcall receiver nil)
 		 (let ((temps (mapcan (lambda (r)
 					(and (or (functionp r) (consp r) (and (vectorp r) (consp (svref r 0)))) (list r)))
-				      (mapcar (lambda (parser)
-						(etypecase parser
-						  (function (funcall parser (car token-list)))
-						  (cons (vector r (cons (car token-list) nil)))
-						  (vector (vector (svref r 0) (nconc (svref r 1) (cons (car token-list) nil))))))
+				      (mapcar (lambda (p)
+						(etypecase p
+						  (function (funcall p (car token-list)))
+						  (cons (vector p (cons (car token-list) nil)))
+						  (vector (vector (svref p 0) (nconc (svref p 1) (cons (car token-list) nil))))))
 					      parsers))))
-		   (format t "temps:~A ~A~%" temps parsers)
 		   (if (some #'functionp temps)
 		       (iter (cdr token-list) temps receiver)
 		       (let ((r (car (sort temps #'< :key (lambda (p) (etypecase p
@@ -165,14 +164,21 @@
 (defun production->parser (production parser-table)
   (destructuring-bind (lhs rhs-list prod-name) production
     (labels
-	((rhs->parser (remain-rhs receiver backouter)
+	((re-read (v)
+	   (if (and (vectorp v) (functionp (svref v 0)))
+	       (let ((buffer (svref v 1))
+		     (fun (svref v 0)))
+		 (if buffer
+		     (re-read (vector (funcall fun (car buffer)) (cdr buffer)))
+		     fun))
+	       v))
+	 (rhs->parser (remain-rhs receiver backouter)
 	   (let ((rhs (car remain-rhs)))
 	     (cond
 	       ((and (symbolp rhs) (not (equal rhs 'arbno)) (not (equal rhs 'separated-list)))
 		(labels
 		    ((parse-lhs (parsers buffer)
 		       (lambda (token)
-			 (format t "parse-lhs:~A ~A~%" token rhs)
 			 (if (null parsers)
 			     (if (equal rhs (car token))
 				 (if (cdr remain-rhs)
@@ -192,7 +198,7 @@
 				       (rhs->parser (cdr remain-rhs)
 						(lambda (p) (cons r p))
 						(lambda (ts) (funcall backouter (append (reverse (cons token buffer)) ts))))
-				       (funcall receiver r))
+				       (funcall receiver (cons r nil)))
 				   (if (some #'functionp temp)
 				       (parse-lhs temp (cons token buffer))
 				       (vector nil (funcall backouter (reverse (cons token buffer)))))))))))
@@ -201,17 +207,17 @@
 		(lambda (token)
 		  (if (string-equal rhs (cadr token))
 		      (if (cdr remain-rhs)
-			  (rhs->parser (cdr remain-rhs) #'identity (lambda (ts) (funcall backouter (cons token ts))))
+			  (rhs->parser (cdr remain-rhs) receiver (lambda (ts) (funcall backouter (cons token ts))))
 			  (funcall receiver nil))
 		      (vector nil (cons token nil)))))
 	       ((consp rhs)
 		(lambda (token)
 		  (funcall (rhs->parser rhs
-				       (lambda (r1)
+					(lambda (r1)
 					 (if (cdr remain-rhs)
 					     (rhs->parser (cdr remain-rhs)
 							  (lambda (r2)
-							    (funcall receiver (append r1 r2)))
+							    (funcall receiver (cons r1 r2)))
 							  (lambda (ts) (funcall backouter (cons token ts))))
 					     (funcall receiver r1)))
 				       backouter)
@@ -223,15 +229,16 @@
 			((handle-result (r buffer)
 			   (etypecase r
 			     (cons
-			      (rhs->parser remain-rhs (lambda (r2) (funcall receiver (mapcar #'cons r r2)))
+			      (rhs->parser remain-rhs (lambda (r2)
+							(funcall receiver (if r2 (mapcar #'list r r2) r)))
 					   (lambda (ts) (funcall backouter (append (reverse buffer) ts)))))
 			     (function
 			      (lambda (token)
 			       (handle-result (funcall r token) (cons token buffer))))
 			     (vector
-			      (vector (funcall receiver (svref r 0)) (svref r 1)))
+			      (re-read (vector (funcall receiver (svref r 0)) (svref r 1))))
 			     (null
-			      (vector (funcall receiver nil) (funcall backouter (reverse buffer)))))))
+			      (re-read (vector (funcall receiver nil) (reverse buffer)))))))
 		      (handle-result r (cons token nil))))))
 	       ((eql 'separated-list rhs)
 		(lambda (token)
@@ -244,17 +251,17 @@
 				(if (string-equal (cadr token) (car (last remain-rhs)))
 				    (rhs->parser remain-rhs (lambda (r2) (funcall receiver (mapcar #'cons r r2)))
 						 (lambda (ts) (funcall backouter (append (reverse (cons token buffer)) ts))))
-				    (vector (funcall receiver nil) (funcall backouter (append (reverse (cons token buffer)) ts))))))
+				    (re-read (vector (funcall receiver nil) (funcall backouter (append (reverse (cons token buffer)) ts)))))))
 			     (function
 			      (lambda (token)
 			       (handle-result (funcall r token) (cons token buffer))))
 			     (vector
-			      (vector (funcall receiver (svref r 0)) (svref r 1)))
+			      (re-read (vector (funcall receiver (svref r 0)) (svref r 1))))
 			     (null
-			      (vector (funcall receiver nil) (funcall backouter (reverse buffer)))))))
+			      (re-read (vector (funcall receiver nil) (funcall backouter (reverse buffer))))))))
 		      (handle-result r (cons token nil))))))
 	       (t (error "Unexpected rhs:~A~%" rhs))))))
-      (rhs->parser rhs-list (lambda (r) (list prod-name r)) #'identity))))
+      (rhs->parser rhs-list (lambda (r) (cons prod-name r)) #'identity))))
 
 (defun make-string-parser (the-lexical-spec the-grammar)
   (labels ((find-keywords (rhs-items receiver)
@@ -276,7 +283,8 @@
       (lambda (s)
 	(let ((token-list (funcall scanner s)))
 	  (format t "token-list:~A~%" token-list)
-	  (parse-token the-grammar token-list))))))
+	  (parse-token the-grammar
+		       token-list))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; test ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (setf the-lexical-spec
@@ -319,3 +327,6 @@
 
 (defun scan&parse1 (s)
   (funcall (make-string-parser the-lexical-spec the-grammar) s))
+
+(defun test-parse ()
+  (scan&parse1 "let x = y u = v in z "))
