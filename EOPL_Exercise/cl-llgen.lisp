@@ -11,125 +11,142 @@
   (lambda (stream)
     (scan-stream stream scanner-spec)))
 
+(defun re-read (v)
+  (if (vectorp v)
+      (let ((buffer (svref v 1))
+	    (fun (svref v 0)))
+	(if buffer
+	    (cond
+	      ((functionp fun) (re-read (vector (funcall fun (car buffer)) (cdr buffer))))
+	      ((vectorp fun) (vector (svref fun 0) (append (svref fun 1) buffer)))
+	      (t v))
+	    fun))
+      v))
+
 (defun scan-stream (stream scanner-spac)
-  (let* ((token-list '())
-	 (scanner-list (mapcar #'token-spec->scanner scanner-spac))
-	 (temp-scanners scanner-list)
-	 (buffer '()))
-    (do ((c (read-char stream) (read-char stream nil 'end-of-stream)))
-	((not (characterp c)) (reverse token-list))
-      (push c buffer)
-      (setf temp-scanners
-	    (mapcar #'(lambda (temp)
-			(if (functionp temp)
-			    (funcall temp c)
-			    temp))
-		    temp-scanners))
-      (when (notany #'functionp temp-scanners)
-	(if (every #'null temp-scanners)
-	    (error "scan error:~A not match any scanner~%" buffer)
-	    (let ((scan-result (car (sort (mapcar (lambda (s) (if (vectorp s) (svref s 0) s)) temp-scanners)
-					  #'> :key #'length)))
-		  (buffered-str (coerce (reverse buffer) 'string)))
-	      (destructuring-bind
-		    (token-string name action) scan-result
-		(ecase action
-		  (skip nil)
-		  (symbol (push (make-token name (make-symbol token-string)) token-list))
-		  (number (push (make-token name (read-from-string token-string)) token-list))
-		  (string (push (make-token name token-string) token-list)))
-		(if (string> buffered-str token-string)
-		    (setf stream (make-concatenated-stream
-				  (make-string-input-stream (subseq buffered-str (length token-string)))
-				  stream)))
-		(setf temp-scanners scanner-list)
-		(setf buffer '()))))))))
+  (let ((scanner-list (mapcar #'token-spec->scanner scanner-spac)))
+    (labels
+	((iter (stream scanners token-list &optional buffer)
+	   (let ((c (read-char stream nil 'end-of-stream)))
+	     (if (not (characterp c))
+		 (reverse token-list)
+		 (let ((temp (mapcar #'(lambda (s)
+					 (etypecase s
+					   (function (funcall s c))
+					   (cons (vector s (cons c nil)))
+					   (vector (vector (svref s 0) (cons c (svref s 1))))))
+				     scanners)))
+		   (if (some #'functionp temp)
+		       (iter stream temp token-list (cons c buffer))
+		       (let* ((scan-result (car (sort temp #'< :key (lambda (s) (if (vectorp s)
+										    (if (svref s 0)
+											(length (svref s 1))
+											most-positive-fixnum)
+										   0)))))
+			      (r (if (vectorp scan-result) (svref scan-result 0) scan-result))
+			      (unuse-buffer (if (vectorp scan-result) (reverse (svref scan-result 1)))))
+			 (if (null r)
+			     (error "scan error:~A not match any scanner~%" (reverse buffer))
+			     (destructuring-bind (token-string name action) r
+			       (iter (if unuse-buffer
+					       (make-concatenated-stream
+						 (make-string-input-stream (coerce unuse-buffer 'string))
+						 stream)
+					       stream)
+				     scanner-list
+				     (ecase action
+				       (skip token-list)
+				       (symbol (cons (make-token name (make-symbol token-string)) token-list))
+				       (number (cons (make-token name (read-from-string token-string)) token-list))
+				       (string (cons (make-token name token-string) token-list)))))))))))))
+      (iter stream scanner-list nil))))
 
 (defun token-spec->scanner (raa)
   (destructuring-bind (name regexp action) raa
     (labels
-	((make-concat-receiver (regexp receiver)
+	((make-concat-receiver (regexp receiver backouter)
 	   (lambda (char-seq)
 	     (if (cdr regexp)
 		 (regexp->scanner (cdr regexp)
-				  (lambda (char-seq2)
-				    (funcall receiver (append char-seq char-seq2))))
+				  (lambda (char-seq2) (funcall receiver (append char-seq char-seq2)))
+				  (lambda (char-seq2) (funcall backouter (append char-seq char-seq2))))
 		 (funcall receiver char-seq))))
-	 (make-single-char-scanner (regexp receiver char-tester)
+	 (make-single-char-scanner (regexp receiver char-tester backouter)
 	   (lambda (c)
 	     (if (funcall char-tester c)
 		 (if (cdr regexp)
-		     (regexp->scanner (cdr regexp) (lambda (s) (funcall receiver (cons c s))))
+		     (regexp->scanner (cdr regexp)
+				      (lambda (s) (funcall receiver (cons c s)))
+				      (lambda (s) (funcall backouter (cons c s))))
 		     (funcall receiver (cons c nil)))
-		 nil)))
-	 (regexp->scanner (regexp receiver)
+		 (vector nil (cons c nil)))))
+	 (regexp->scanner (regexp receiver backouter)
 	   (let ((exp (car regexp)))
 	     (cond
 	       ((stringp exp)
 		(regexp->scanner
 		 (cons (cons 'concat (coerce exp 'list)) (cdr regexp))
-		 receiver))
+		 receiver backouter))
 	       ((consp exp)
-		(regexp->scanner exp (make-concat-receiver regexp receiver)))
+		(regexp->scanner exp (make-concat-receiver regexp receiver backouter) backouter))
 	       ((characterp exp)
-		(make-single-char-scanner regexp receiver (lambda (c) (eql c exp))))
+		(make-single-char-scanner regexp receiver (lambda (c) (eql c exp)) backouter))
 	       ((eql exp 'letter)
-		(make-single-char-scanner regexp receiver #'alpha-char-p))
+		(make-single-char-scanner regexp receiver #'alpha-char-p backouter))
 	       ((eql exp 'digit)
-		(make-single-char-scanner regexp receiver #'digit-char-p))
+		(make-single-char-scanner regexp receiver #'digit-char-p backouter))
 	       ((eql exp 'any)
-		(make-single-char-scanner regexp receiver (constantly t)))
+		(make-single-char-scanner regexp receiver (constantly t) backouter))
 	       ((eql exp 'not)
-		(make-single-char-scanner regexp receiver (lambda (c) (not (eql c (cadr regexp))))))
+		(lambda (c)
+		  (if (not (eql c (cadr regexp)))
+		      (funcall receiver (cons c nil))
+		      (vector nil (cons c nil)))))
 	       ((eql exp 'whitespace)
 		(regexp->scanner
 		 '((or #\Space #\NewLine) (arbno (or #\Space #\NewLine)))
-		 (make-concat-receiver regexp receiver)))
+		 (make-concat-receiver regexp receiver backouter)
+		 backouter))
 	       ((eql exp 'or)
-		(let ((scanners (mapcar (lambda (e) (regexp->scanner (cons e nil) #'identity))
-					(cdr regexp))))
-		  (labels
-		      ((make-or-scan (or-scanners)
-			 (labels
-			     ((or-scan (c)
-				(let ((scanners (mapcar (lambda (scanner)
-							  (if (functionp scanner)
-							      (funcall scanner c)
-							      scanner))
-							or-scanners)))
-				  (if (some #'functionp scanners)
-				      (make-or-scan scanners)
-				      (let ((r (car (sort scanners #'>
-							  :key (lambda (s)
-								 (if (vectorp s)
-								     (length (svref s 0))
-								     (length s)))))))
-					(etypecase r
-					  (cons (funcall receiver r))
-					  (vector (vector (funcall receiver (svref r 0)) (svref r 1)))
-					  (null nil)))))))
-			   #'or-scan)))
-		    (make-or-scan scanners))))
+		(labels
+		    ((make-or-scan (or-scanners &optional buffer)
+		       (labels
+			   ((or-scan (c)
+			      (let ((temp (mapcar (lambda (s)
+						    (etypecase s
+						      (function (funcall s c))
+						      (cons (vector s (cons c nil)))
+						      (vector (vector (svref s 0) (cons c (svref s 1))))))
+						  or-scanners)))
+				(if (some #'functionp temp)
+				    (make-or-scan temp (cons c nil))
+				    (let ((r (car (sort temp #'< :key (lambda (s)
+									(if (vectorp s)
+									    (length (svref s 1))
+									    0))))))
+				      (etypecase r
+					(cons (funcall receiver r))
+					(vector (re-read (vector (funcall receiver (svref r 0)) (reverse (svref r 1)))))
+					(null (vector nil (funcall backouter (reverse (cons c buffer)))))))))))
+			 #'or-scan)))
+		  (make-or-scan (mapcar (lambda (e) (regexp->scanner (cons e nil) #'identity #'identity)) (cdr regexp)))))
 	       ((eql exp 'arbno)
 		(lambda (c)
-		  (let ((r (funcall (regexp->scanner (cdr regexp) #'identity) c)))
+		  (let ((r (funcall (regexp->scanner (cdr regexp) #'identity #'identity) c)))
 		    (labels
-			((handle-result (r)
+			((handle-result (r buffer)
 			   (etypecase r
-			     (cons
-			      (regexp->scanner regexp (lambda (s) (funcall receiver (append r s)))))
-			     (vector
-			      (vector (funcall receiver (svref s 0)) (svref s 1)))
-			     (function
-			      (lambda (c)
-			       (handle-result (funcall r c))))
-			     (null
-			      (vector (funcall receiver nil) c)))))
-		      (handle-result r)))))
+			     (cons (regexp->scanner regexp
+						    (lambda (s) (funcall receiver (append r s)))
+						    (lambda (s) (funcall backouter (append (reverse buffer) s)))))
+			     (vector (re-read (vector (funcall receiver (svref r 0)) (svref r 1))))
+			     (function (lambda (c) (handle-result (funcall r c) (cons c buffer))))
+			     (null (re-read (vector (funcall receiver nil) (reverse buffer)))))))
+		      (handle-result r (cons c nil))))))
 	       ((eql exp 'concat)
-		(regexp->scanner (cdr regexp) receiver))
+		(regexp->scanner (cdr regexp) receiver backouter))
 	       (t (error "Unknown expression:~A~%" exp))))))
-      (regexp->scanner regexp (lambda (s) (list (coerce s 'string) name action))))))
+      (regexp->scanner regexp (lambda (s) (if s (list (coerce s 'string) name action))) #'identity))))
 
 (defun parse-token (grammar-spec token-list)
   (let ((prod-parser-table (make-hash-table)))
@@ -140,7 +157,6 @@
       (maphash (lambda (k v) (setf parser-list (append parser-list v))) prod-parser-table)
       (labels
 	  ((iter (token-list parsers receiver)
-	     (format t "iter:~A~%" (car token-list))
 	     (if (null token-list)
 		 (funcall receiver nil)
 		 (let ((temps (mapcan (lambda (r)
@@ -164,15 +180,7 @@
 (defun production->parser (production parser-table)
   (destructuring-bind (lhs rhs-list prod-name) production
     (labels
-	((re-read (v)
-	   (if (and (vectorp v) (functionp (svref v 0)))
-	       (let ((buffer (svref v 1))
-		     (fun (svref v 0)))
-		 (if buffer
-		     (re-read (vector (funcall fun (car buffer)) (cdr buffer)))
-		     fun))
-	       v))
-	 (rhs->parser (remain-rhs receiver backouter)
+	((rhs->parser (remain-rhs receiver backouter)
 	   (let ((rhs (car remain-rhs)))
 	     (cond
 	       ((and (symbolp rhs) (not (equal rhs 'arbno)) (not (equal rhs 'separated-list)))
@@ -183,8 +191,8 @@
 			     (if (equal rhs (car token))
 				 (if (cdr remain-rhs)
 				     (rhs->parser (cdr remain-rhs)
-					      (lambda (p) (cons (cadr token) p))
-					      (lambda (ts) (funcall backouter (append (reverse (cons token buffer)) ts))))
+						  (lambda (p) (cons (cadr token) p))
+						  (lambda (ts) (funcall backouter (append (reverse (cons token buffer)) ts))))
 				     (funcall receiver (cons (cadr token) nil)))
 				 (vector nil (funcall backouter (reverse (cons token buffer)))))
 			     (let* ((temp (mapcar (lambda (parser)
@@ -196,8 +204,8 @@
 			       (if r
 				   (if (cdr remain-rhs)
 				       (rhs->parser (cdr remain-rhs)
-						(lambda (p) (cons r p))
-						(lambda (ts) (funcall backouter (append (reverse (cons token buffer)) ts))))
+						    (lambda (p) (cons r p))
+						    (lambda (ts) (funcall backouter (append (reverse (cons token buffer)) ts))))
 				       (funcall receiver (cons r nil)))
 				   (if (some #'functionp temp)
 				       (parse-lhs temp (cons token buffer))
@@ -205,7 +213,7 @@
 		  (parse-lhs (gethash rhs parser-table) nil)))
 	       ((stringp rhs)
 		(lambda (token)
-		  (if (string-equal rhs (cadr token))
+		  (if (equal rhs (cadr token))
 		      (if (cdr remain-rhs)
 			  (rhs->parser (cdr remain-rhs) receiver (lambda (ts) (funcall backouter (cons token ts))))
 			  (funcall receiver nil))
@@ -214,13 +222,13 @@
 		(lambda (token)
 		  (funcall (rhs->parser rhs
 					(lambda (r1)
-					 (if (cdr remain-rhs)
-					     (rhs->parser (cdr remain-rhs)
-							  (lambda (r2)
-							    (funcall receiver (cons r1 r2)))
-							  (lambda (ts) (funcall backouter (cons token ts))))
-					     (funcall receiver r1)))
-				       backouter)
+					  (if (cdr remain-rhs)
+					      (rhs->parser (cdr remain-rhs)
+							   (lambda (r2)
+							     (funcall receiver (cons r1 r2)))
+							   (lambda (ts) (funcall backouter (cons token ts))))
+					      (funcall receiver r1)))
+					backouter)
 			   token)))
 	       ((eql 'arbno rhs)
 		(lambda (token)
@@ -228,17 +236,13 @@
 		    (labels
 			((handle-result (r buffer)
 			   (etypecase r
-			     (cons
-			      (rhs->parser remain-rhs (lambda (r2)
-							(funcall receiver (if r2 (mapcar #'list r r2) r)))
-					   (lambda (ts) (funcall backouter (append (reverse buffer) ts)))))
-			     (function
-			      (lambda (token)
+			     (cons (rhs->parser remain-rhs (lambda (r2)
+							     (funcall receiver (if r2 (mapcar #'list r r2) r)))
+						(lambda (ts) (funcall backouter (append (reverse buffer) ts)))))
+			     (function (lambda (token)
 			       (handle-result (funcall r token) (cons token buffer))))
-			     (vector
-			      (re-read (vector (funcall receiver (svref r 0)) (svref r 1))))
-			     (null
-			      (re-read (vector (funcall receiver nil) (reverse buffer)))))))
+			     (vector (re-read (vector (funcall receiver (svref r 0)) (svref r 1))))
+			     (null (re-read (vector (funcall receiver nil) (reverse buffer)))))))
 		      (handle-result r (cons token nil))))))
 	       ((eql 'separated-list rhs)
 		(lambda (token)
@@ -273,60 +277,48 @@
 		   (cons (let ((cks (find-keywords (car rhs-items) #'identity)))
 			   (find-keywords (cdr rhs-items) (lambda (ks) (funcall receiver (append cks ks))))))))))
     (let* ((ext-lexical-spec `((keyword
-				(or ,@(reduce #'union
+				((or ,@(reduce (lambda (l1 l2) (union l1 l2 :test #'equal))
 					      (mapcar
 					       (lambda (production) (find-keywords (cadr production) #'identity))
-					       the-grammar)))
+					       the-grammar))))
 				string)
 			       ,@the-lexical-spec))
 	   (scanner (make-string-scanner ext-lexical-spec)))
       (lambda (s)
 	(let ((token-list (funcall scanner s)))
-	  (format t "token-list:~A~%" token-list)
-	  (parse-token the-grammar
-		       token-list))))))
+	  (parse-token the-grammar token-list))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; test ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (setf the-lexical-spec
-  '((whitespace ((or #\Space #\NewLine) (arbno (or #\Space #\NewLine))) skip)
-    (comment ("%" (arbno (not #\newline))) skip)
-    (identifier
-     (letter (arbno (or letter digit "_" "-" "?")))
-     symbol)
-    (number (digit (arbno digit)) number)
-    (number ("-" digit (arbno digit)) number)
-    ))
+      '((whitespace ((or #\Space #\NewLine) (arbno (or #\Space #\NewLine))) skip)
+	(comment ("//" (arbno (not #\newline))) skip)
+	(identifier (letter (arbno (or letter digit "_" "-" "?"))) symbol)
+	(number (digit (arbno digit)) number)
+	(number ("-" digit (arbno digit)) number)))
 
 (setf the-grammar
-  '((program (expression) a-program)
-
-    (expression (number) const-exp)
-    (expression
-     ("-" "(" expression "," expression ")")
-     diff-exp)
-    
-    (expression
-     ("zero?" "(" expression ")")
-     zero?-exp)
-
-    (expression
-     ("if" expression "then" expression "else" expression)
-     if-exp)
-
-    (expression (identifier) var-exp)
-
-    (expression
-     ("let" (arbno identifier "=" expression) "in" expression)
-     let-exp)   
-
-    ))
+      '((program (expression) a-program)
+	(expression (number) const-exp)
+	(expression
+	 ("-" "(" expression "," expression ")")
+	 diff-exp)
+	(expression
+	 ("zero?" "(" expression ")")
+	 zero?-exp)
+	(expression
+	 ("if" expression "then" expression "else" expression)
+	 if-exp)
+	(expression (identifier) var-exp)
+	(expression
+	 ("let" (arbno identifier "=" expression) "in" expression)
+	 let-exp)))
 
 (defun test-scan ()
   (funcall (make-string-scanner the-lexical-spec)
-	   "asdf  1234  -4321   % skdlajf"))
+	   "asdf  1234  -4321   // skdlajf"))
 
 (defun scan&parse1 (s)
   (funcall (make-string-parser the-lexical-spec the-grammar) s))
 
 (defun test-parse ()
-  (scan&parse1 "let x = y u = v in z "))
+  (scan&parse1 "let x = y u1 = 321 in z "))
