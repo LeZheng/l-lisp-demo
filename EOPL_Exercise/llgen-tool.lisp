@@ -18,25 +18,33 @@
   (labels
       ((concat-reducer (reducer c)
 	 (lambda (s) (funcall reducer (cons c s))))
+       (re-read (scanner remain-chars)
+	 (if remain-chars
+	     (if (functionp scanner)
+		 (re-read (funcall scanner (car remain-chars)) (cdr remain-chars))
+		 (cons (car scanner) (append (cdr scanner) remain-chars)))
+	     scanner))
        (regexp->scanner (regexp reducer next-cont)
 	 (if (null regexp)
 	     (funcall next-cont (funcall reducer nil) nil)
-	     (lambda (c);;c is nil??
-	       (labels
+	     (lambda (c)
+	       (if (null c)
+		   (funcall next-cont (funcall reducer nil) nil)
+		   (labels
 		   ((handle-single-char-with (predicate)
 		      (if (funcall predicate c)
 			  (regexp->scanner (cdr regexp) (concat-reducer reducer c) next-cont)
 			  (funcall next-cont nil (funcall reducer `(,c))))))
 		 (let ((exp (car regexp)))
-		   ;(format t "read:~A ~A~%" c regexp)
 		   (etypecase exp
 		     (cons
 		      (funcall (regexp->scanner exp #'identity
 				       (lambda (token-chars remain-chars)
 					 (if token-chars
-					     (regexp->scanner (cdr regexp)
+					     (re-read (regexp->scanner (cdr regexp)
 							      (lambda (s) (funcall reducer (append token-chars s)))
 							      next-cont)
+						      remain-chars)
 					     (funcall next-cont nil (funcall reducer remain-chars)))))
 			       c))
 		     (string
@@ -67,7 +75,6 @@
 							   (funcall scanner c)
 							   scanner))
 						     scanners)))
-				      ;(format t "read: ~A  ~A~%" c scanners)
 				      (if (some #'functionp scanners)
 					  (lambda (c) (apply-scanners scanners c))
 					  (let ((result (reduce
@@ -111,7 +118,7 @@
 				 (funcall next-cont nil (funcall reducer remain-chars)))))
 			  c))
 			(concat
-			 (funcall (regexp->scanner (cdr regexp) reducer next-cont) c)))))))))))
+			 (funcall (regexp->scanner (cdr regexp) reducer next-cont) c))))))))))))
     (lambda (text)
       (let ((src-scanner (regexp->scanner (cons 'or scanner-spec) #'identity #'cons)))
 	(labels
