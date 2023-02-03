@@ -31,94 +31,92 @@
 	       (if (null c)
 		   (funcall next-cont (funcall reducer nil) nil)
 		   (labels
-		   ((handle-single-char-with (predicate)
-		      (if (funcall predicate c)
-			  (regexp->scanner (cdr regexp) (concat-reducer reducer c) next-cont)
-			  (funcall next-cont nil (funcall reducer `(,c))))))
-		 (let ((exp (car regexp)))
-		   (etypecase exp
-		     (cons
-		      (funcall (regexp->scanner exp #'identity
-				       (lambda (token-chars remain-chars)
-					 (if token-chars
-					     (re-read (regexp->scanner (cdr regexp)
-							      (lambda (s) (funcall reducer (append token-chars s)))
-							      next-cont)
-						      remain-chars)
-					     (funcall next-cont nil (funcall reducer remain-chars)))))
-			       c))
-		     (string
-		      (funcall (regexp->scanner (cons (cons 'concat (coerce exp 'list)) (cdr regexp)) reducer next-cont) c))
-		     (character
-		      (handle-single-char-with (lambda (c) (equal exp c))))
-		     (symbol
-		      (ecase exp
-			(letter
-			 (handle-single-char-with #'alpha-char-p))
-			(digit
-			 (handle-single-char-with #'digit-char-p))
-			(whitespace
-			 (funcall (regexp->scanner (cons '(concat (or #\Space #\NewLine) (arbno (or #\Space #\NewLine))) (cdr regexp))
-						   reducer next-cont)
-				  c))
-			(any
-			 (handle-single-char-with (lambda (c) t)))
-			(not
-			 (if (not (equal c (cadr regexp)))
-			     (funcall next-cont (funcall reducer `(,c)) nil)
-			     (funcall next-cont nil (funcall reducer `(,c)))))
-			(or
-			 (labels ((apply-scanners (scanners c)
-				    (let ((scanners (mapcar
-						     (lambda (scanner)
-						       (if (functionp scanner)
-							   (funcall scanner c)
-							   scanner))
-						     scanners)))
-				      (if (some #'functionp scanners)
-					  (lambda (c) (apply-scanners scanners c))
-					  (let ((result (reduce
-							 (lambda (&optional a b)
-							   (if (and a b)
-							       (if (> (length (if (vectorp (car a)) (svref (car a) 1) (car a)))
-								      (length (if (vectorp (car b)) (svref (car b) 1) (car b))))
-								   a
-								   b)))
-							 scanners)))
-					    (funcall next-cont (car result) (cdr result)))))))
-			   (apply-scanners (mapcar
-					    (if (eql scanner-spec (cdr regexp))
-						(lambda (spec)
-						  (regexp->scanner
-						   (cadr spec)
-						   #'identity
-						   (lambda (token-chars remain-chars)
-						     (format t "scanned: ~A ~A ~A~%" token-chars remain-chars spec)
-						     (cons (vector (car spec) token-chars (caddr spec)) remain-chars))))
-						(lambda (sub-exp) (regexp->scanner
-								   (if (consp sub-exp)
-								       sub-exp
-								       (cons sub-exp nil))
-								   #'identity #'cons)))
-					    (cdr regexp))
-					   c)))
-			(arbno
-			 (funcall
-			  (regexp->scanner
-			   (cdr regexp) #'identity
-			   (lambda (token-chars remain-chars)
-			     (if token-chars
-				 (regexp->scanner
-				  regexp
-				  #'identity
-				  (lambda (tc2 rc2)
-				    (if tc2
-					(funcall next-cont (funcall reducer (append token-chars tc2)) rc2)
-					(funcall next-cont (funcall reducer token-chars) rc2))))
-				 (funcall next-cont nil (funcall reducer remain-chars)))))
-			  c))
-			(concat
-			 (funcall (regexp->scanner (cdr regexp) reducer next-cont) c))))))))))))
+		       ((handle-single-char-with (predicate)
+			  (if (funcall predicate c)
+			      (regexp->scanner (cdr regexp) (concat-reducer reducer c) next-cont)
+			      (funcall next-cont nil (funcall reducer `(,c))))))
+		     (let ((exp (car regexp)))
+		       (etypecase exp
+			 (cons (funcall
+				(regexp->scanner
+				 exp
+				 #'identity
+				 (lambda (token-chars remain-chars)
+				   (if token-chars
+				       (re-read (regexp->scanner
+						 (cdr regexp)
+						 (lambda (s) (funcall reducer (append token-chars s)))
+						 next-cont)
+						remain-chars)
+				       (funcall next-cont nil (funcall reducer remain-chars)))))
+				c))
+			 (string (funcall (regexp->scanner `((concat ,@(coerce exp 'list)) ,@(cdr regexp)) reducer next-cont) c))
+			 (character (handle-single-char-with (lambda (c) (equal exp c))))
+			 (symbol
+			  (ecase exp
+			    (letter (handle-single-char-with #'alpha-char-p))
+			    (digit (handle-single-char-with #'digit-char-p))
+			    (whitespace (funcall
+					 (regexp->scanner
+					  (cons '(concat (or #\Space #\NewLine) (arbno (or #\Space #\NewLine))) (cdr regexp))
+					  reducer next-cont)
+					 c))
+			    (any (handle-single-char-with (lambda (c) t)))
+			    (not (if (not (equal c (cadr regexp)))
+				     (funcall next-cont (funcall reducer `(,c)) nil)
+				     (funcall next-cont nil (funcall reducer `(,c)))))
+			    (or (labels
+				    ((apply-scanners (scanners c)
+				       (let ((scanners (mapcar
+							(lambda (scanner)
+							  (if (functionp scanner)
+							      (funcall scanner c)
+							      scanner))
+							scanners)))
+					 (if (some #'functionp scanners)
+					     (lambda (c) (apply-scanners scanners c))
+					     (let ((result (reduce
+							    (lambda (&optional a b)
+							      (if (and a b)
+								  (if (> (length (if (vectorp (car a)) (svref (car a) 1) (car a)))
+									 (length (if (vectorp (car b)) (svref (car b) 1) (car b))))
+								      a
+								      b)))
+							    scanners)))
+					       (funcall next-cont (car result) (cdr result)))))))
+				  (apply-scanners
+				   (mapcar
+				    (if (eql scanner-spec (cdr regexp))
+					(lambda (spec)
+					  (regexp->scanner
+					   (cadr spec)
+					   #'identity
+					   (lambda (token-chars remain-chars)
+					     (cons (vector (car spec) token-chars (caddr spec)) remain-chars))))
+					(lambda (sub-exp) (regexp->scanner
+							   (if (consp sub-exp)
+							       sub-exp
+							       (cons sub-exp nil))
+							   #'identity #'cons)))
+				    (cdr regexp))
+				   c)))
+			    (arbno (funcall
+				    (regexp->scanner
+				     (cdr regexp)
+				     #'identity
+				     (lambda (token-chars remain-chars)
+				       (if token-chars
+					   (regexp->scanner
+					    regexp
+					    #'identity
+					    (lambda (tc2 rc2)
+					      (if tc2
+						  (funcall next-cont (funcall reducer (append token-chars tc2)) rc2)
+						  (funcall next-cont (funcall reducer token-chars) rc2))))
+					   (funcall next-cont nil (funcall reducer remain-chars)))))
+				    c))
+			    (concat
+			     (funcall (regexp->scanner (cdr regexp) reducer next-cont) c))))))))))))
     (lambda (text)
       (let ((src-scanner (regexp->scanner (cons 'or scanner-spec) #'identity #'cons)))
 	(labels
