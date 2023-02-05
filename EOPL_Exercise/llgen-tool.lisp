@@ -12,12 +12,11 @@
     (identifier (letter (arbno (or letter digit))) symbol)
     (number (digit (arbno digit)) number)))
 
-(defstruct scan-result token-chars remain-chars)
-
 (defun make-string-scanner (scanner-spec)
   (labels
       ((concat-reducer (reducer c)
 	 (lambda (s) (funcall reducer (cons c s))))
+       (result-length (r) (length (if (vectorp r) (svref r 1) r)))
        (re-read (scanner remain-chars)
 	 (if remain-chars
 	     (if (functionp scanner)
@@ -78,8 +77,7 @@
 					     (let ((result (reduce
 							    (lambda (&optional a b)
 							      (if (and a b)
-								  (if (> (length (if (vectorp (car a)) (svref (car a) 1) (car a)))
-									 (length (if (vectorp (car b)) (svref (car b) 1) (car b))))
+								  (if (> (result-length (car a)) (result-length  (car b)))
 								      a
 								      b)))
 							    scanners)))
