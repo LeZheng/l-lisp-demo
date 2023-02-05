@@ -94,9 +94,7 @@
 					   (lambda (token-chars remain-chars)
 					     (cons (vector (car spec) token-chars (caddr spec)) remain-chars))))
 					(lambda (sub-exp) (regexp->scanner
-							   (if (consp sub-exp)
-							       sub-exp
-							       (cons sub-exp nil))
+							   (if (consp sub-exp) sub-exp (cons sub-exp nil))
 							   #'identity #'cons)))
 				    (cdr regexp))
 				   c)))
@@ -128,7 +126,7 @@
 			 (if (svref (car r) 1)
 			     (iter-char (append (cdr r) (cdr chars)) src-scanner (cons (car r) tokens))
 			     (reverse tokens))))
-		   (reverse tokens))))
+		   (reverse (cons (car (funcall scanner nil)) tokens)))))
 	  (iter-char (coerce text 'list) src-scanner nil))))))
 
 (setf the-lexical-spec
