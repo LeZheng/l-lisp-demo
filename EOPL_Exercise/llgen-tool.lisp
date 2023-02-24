@@ -6,12 +6,6 @@
 ;;                  ::= (arbno Regexp) | (concat {Regexp} ∗ )
 ;;Action            ::= skip | symbol | number | string
 
-(setf scanner-spec-a
-  '((white-sp (whitespace) skip)
-    (comment ("%" (arbno (not #\newline))) skip)
-    (identifier (letter (arbno (or letter digit))) symbol)
-    (number (digit (arbno digit)) number)))
-
 (defun make-string-scanner (scanner-spec)
   (labels
       ((concat-reducer (reducer c)
@@ -70,7 +64,7 @@
 							(lambda (scanner)
 							  (if (functionp scanner)
 							      (funcall scanner c)
-							      scanner))
+							      (append scanner `(,c))));;append need optimize
 							scanners)))
 					 (if (some #'functionp scanners)
 					     (lambda (c) (apply-scanners scanners c))
@@ -126,6 +120,121 @@
 			     (reverse tokens))))
 		   (reverse (cons (car (funcall scanner nil)) tokens)))))
 	  (iter-char (coerce text 'list) src-scanner nil))))))
+
+;;Grammar    ::= ({Production}∗ )
+;;Production ::= (Lhs ({Rhs-item}∗ ) Prod-name)
+;;Lhs        ::= Symbol
+;;Rhs-item   ::= Symbol | String
+;;           ::= (arbno {Rhs-item}∗ )
+;;           ::= (separated-list {Rhs-item}∗ String)
+;;Prod-name  ::= Symbol
+
+(defun make-token-parser (grammar-spec)
+  (let ((parser-table (make-hash-table)))
+    (labels
+	((try-call-parser (parser token) (if (functionp parser) (funcall parser token) parser))
+	 (re-read (parser tokens)
+	   (if (null tokens)
+	       parser
+	       (if (functionp parser)
+		   (re-read (funcall parser (car tokens)) (cdr tokens))
+		   (cons (car parser) (append (cdr parser) tokens)))))
+	 (rhs->parser (rhs-items reducer next-cont)
+	   (if (null rhs-items)
+	       (funcall next-cont (funcall reducer nil) nil)
+	       (lambda (token)
+		 (let ((rhs-item (car rhs-items)))
+		   (etypecase rhs-item
+		     (string (if (equal token rhs-item)
+				 (rhs->parser (cdr rhs-items) (lambda (tokens) (funcall reducer (cons token tokens))) next-cont)
+				 (funcall next-cont (funcall reducer nil) (cons token))))
+		     (symbol
+		      (case rhs-item
+			(number (if (numberp token)
+				    (rhs->parser (cdr rhs-items) (lambda (tokens) (funcall reducer (cons token tokens))) next-cont)
+				    (funcall next-cont (funcall reducer nil) (cons token))))
+			(identifier
+			 (rhs->parser (cdr rhs-items) (lambda (tokens) (funcall reducer (cons token tokens))) next-cont))
+			(otherwise
+			 (let ((parser-list (gethash rhs-item parser-table)))
+			   (if (null parser-list)
+			       (error "unsupported symbol: ~A" rhs-item)
+			       (labels
+				   ((apply-parsers (token parsers)
+				      ));;todo
+				 (apply-parsers token parser-list)))))))
+		     (cons
+		      (let ((start-sym (car rhs-item)))
+			(case start-sym
+ 			  (arbno
+			   (funcall
+			    (rhs->parser
+			     (cdr rhs-item)
+			     #'identity
+			     (lambda (pt rt)
+			       (if (null pt)
+				   (funcall next-cont nil (funcall reducer rt))
+				   (re-read
+				    (rhs->parser rhs-item #'identity
+						 (lambda (pt2 rt2)
+						   (if (null pt2)
+						       (funcall next-cont (funcall reducer pt) rt2)
+						       (funcall next-cont (funcall reducer (mapcar #'cons pt pt2)) rt2))))
+				    rt)))
+			     token))
+			   (separated-list
+			    (funcall
+			     (rhs->parser
+			      (butlast (cdr rhs-item))
+			      #'identity
+			      (lambda (pt rt)
+				(if (null pt)
+				    (funcall next-cont nil (funcall reducer rt))
+				    (re-read
+				     (rhs->parser
+				      (last rhs-item)
+				      #'identity
+				      (lambda (s srt)
+					(if (null s)
+					    (funcall next-cont (funcall reducer pt) srt)
+					    (rhs->parser
+					     rhs-item #'identity
+					     (lambda (pt2 rt2)
+					       (if (null pt2)
+						   (funcall next-cont (funcall reducer pt) rt2)
+						   (funcall next-cont (funcall reducer (mapcar #'cons pt pt2)) rt2)))))))
+				     rt))))
+			     token)
+			    )
+			   (otherwise (error "unexpected start symbol ~A" start-sym)))))))))))
+      (lambda (token-list)
+	(let ((parser-list (mapcar
+			    (lambda (spec)
+			      (destructuring-bind (lhs rhs-items prod-name) spec
+				(let ((parser (rhs->parser rhs-items #'identity (lambda (r) (cons prod-name r))))
+				      (prev-parsers (gethash lhs parser-table)))
+				  (setf (gethash lhs parser-table) (cons parser prev-parsers))
+				  parser)))
+			    grammar-spec)))
+	  (labels
+	      ((iter-token (tokens parsers)
+		 (if (some #'functionp parsers)
+		     (iter-token (cdr tokens)
+				 (mapcar (lambda (parser) (try-call-parser parser (if (null tokens) nil (car tokens)))) parsers))
+		     (let ((r (reduce
+			       (lambda (&optional p1 p2)
+				 );;todo
+			       parsers)))
+		       (if r
+			   (iter-token tokens parser-list)
+			   (error "parse failed!"))))))
+	    (iter-token token-list parser-list)))))))
+
+(setf scanner-spec-a
+  '((white-sp (whitespace) skip)
+    (comment ("%" (arbno (not #\newline))) skip)
+    (identifier (letter (arbno (or letter digit))) symbol)
+    (number (digit (arbno digit)) number)))
 
 (setf the-lexical-spec
       '((whitespace ((or #\Space #\NewLine) (arbno (or #\Space #\NewLine))) skip)
