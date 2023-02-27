@@ -132,7 +132,8 @@
 (defun make-token-parser (grammar-spec)
   (let ((parser-table (make-hash-table)))
     (labels
-	((try-call-parser (parser token) (if (functionp parser) (funcall parser token) parser))
+	((try-call-parser (parser token)
+	   (if (functionp parser) (funcall parser token) (append parser `(,token))))
 	 (re-read (parser tokens)
 	   (if (null tokens)
 	       parser
@@ -147,12 +148,12 @@
 		   (etypecase rhs-item
 		     (string (if (equal token rhs-item)
 				 (rhs->parser (cdr rhs-items) (lambda (tokens) (funcall reducer (cons token tokens))) next-cont)
-				 (funcall next-cont (funcall reducer nil) (cons token))))
+				 (funcall next-cont nil (funcall reducer `(,token)))))
 		     (symbol
 		      (case rhs-item
 			(number (if (numberp token)
 				    (rhs->parser (cdr rhs-items) (lambda (tokens) (funcall reducer (cons token tokens))) next-cont)
-				    (funcall next-cont (funcall reducer nil) (cons token))))
+				    (funcall next-cont nil (funcall reducer `(,token)))))
 			(identifier
 			 (rhs->parser (cdr rhs-items) (lambda (tokens) (funcall reducer (cons token tokens))) next-cont))
 			(otherwise
@@ -161,7 +162,16 @@
 			       (error "unsupported symbol: ~A" rhs-item)
 			       (labels
 				   ((apply-parsers (token parsers)
-				      ));;todo
+				      (let ((parsers (mapcar #'try-call-parser parsers)))
+					(if (some #'functionp parsers)
+					    (lambda (token) (apply-parsers token parsers))
+					    (let ((result (reduce (lambda (&optional a b)
+								    (if (and a b)
+									(if (< (length (cdr a)) (length  (cdr b)))
+									    a
+									    b)))
+								  parsers)))
+					      (funcall next-cont (car result) (cdr result)))))))
 				 (apply-parsers token parser-list)))))))
 		     (cons
 		      (let ((start-sym (car rhs-item)))
@@ -196,7 +206,7 @@
 				      #'identity
 				      (lambda (s srt)
 					(if (null s)
-					    (funcall next-cont (funcall reducer pt) srt)
+					    (funcall  next-cont (funcall reducer pt) srt)
 					    (rhs->parser
 					     rhs-item #'identity
 					     (lambda (pt2 rt2)
@@ -204,30 +214,34 @@
 						   (funcall next-cont (funcall reducer pt) rt2)
 						   (funcall next-cont (funcall reducer (mapcar #'cons pt pt2)) rt2)))))))
 				     rt))))
-			     token)
-			    )
+			     token))
 			   (otherwise (error "unexpected start symbol ~A" start-sym)))))))))))
       (lambda (token-list)
 	(let ((parser-list (mapcar
 			    (lambda (spec)
 			      (destructuring-bind (lhs rhs-items prod-name) spec
-				(let ((parser (rhs->parser rhs-items #'identity (lambda (r) (cons prod-name r))))
+				(let ((parser (rhs->parser rhs-items #'identity (lambda (tokens rt)
+										  (cons (cons prod-name tokens) rt))))
 				      (prev-parsers (gethash lhs parser-table)))
-				  (setf (gethash lhs parser-table) (cons parser prev-parsers))
+				  (setf (gethash lhs parser-table) (cons parser prev-parsers));;side effect
 				  parser)))
 			    grammar-spec)))
 	  (labels
-	      ((iter-token (tokens parsers)
+	      ((iter-token (tokens parsers reducer)
 		 (if (some #'functionp parsers)
 		     (iter-token (cdr tokens)
-				 (mapcar (lambda (parser) (try-call-parser parser (if (null tokens) nil (car tokens)))) parsers))
+				 (mapcar (lambda (parser) (try-call-parser parser (car tokens))) parsers)
+				 reducer)
 		     (let ((r (reduce
 			       (lambda (&optional p1 p2)
-				 );;todo
+				 (if (and p1 p2)
+				     (if (< (length (cdr p1)) (length (cdr p2)))
+					 p1
+					 p2)))
 			       parsers)))
 		       (if r
-			   (iter-token tokens parser-list)
-			   (error "parse failed!"))))))
+			   (iter-token tokens parser-list (lambda (rs) (funcall reducer (cons r rs))))
+			   (funcall reducer nil))))))
 	    (iter-token token-list parser-list)))))))
 
 (setf scanner-spec-a
