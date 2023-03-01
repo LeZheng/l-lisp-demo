@@ -133,7 +133,7 @@
   (let ((parser-table (make-hash-table)))
     (labels
 	((try-call-parser (parser token)
-	   (if (functionp parser) (funcall parser token) (append parser `(,token))))
+	   (if (functionp parser) (funcall parser token) (append parser `(,token))));;append need optimize
 	 (re-read (parser tokens)
 	   (if (null tokens)
 	       parser
@@ -190,32 +190,32 @@
 						   (if (null pt2)
 						       (funcall next-cont (funcall reducer pt) rt2)
 						       (funcall next-cont (funcall reducer (mapcar #'cons pt pt2)) rt2))))
-				    rt)))
-			     token))
-			   (separated-list
-			    (funcall
-			     (rhs->parser
-			      (butlast (cdr rhs-item))
-			      #'identity
-			      (lambda (pt rt)
-				(if (null pt)
-				    (funcall next-cont nil (funcall reducer rt))
-				    (re-read
-				     (rhs->parser
-				      (last rhs-item)
-				      #'identity
-				      (lambda (s srt)
-					(if (null s)
-					    (funcall  next-cont (funcall reducer pt) srt)
-					    (rhs->parser
-					     rhs-item #'identity
-					     (lambda (pt2 rt2)
-					       (if (null pt2)
-						   (funcall next-cont (funcall reducer pt) rt2)
-						   (funcall next-cont (funcall reducer (mapcar #'cons pt pt2)) rt2)))))))
-				     rt))))
-			     token))
-			   (otherwise (error "unexpected start symbol ~A" start-sym)))))))))))
+				    rt))))
+			    token))
+			  (separated-list
+			   (funcall
+			    (rhs->parser
+			     (butlast (cdr rhs-item))
+			     #'identity
+			     (lambda (pt rt)
+			       (if (null pt)
+				   (funcall next-cont nil (funcall reducer rt))
+				   (re-read
+				    (rhs->parser
+				     (last rhs-item)
+				     #'identity
+				     (lambda (s srt)
+				       (if (null s)
+					   (funcall  next-cont (funcall reducer pt) srt)
+					   (rhs->parser
+					    rhs-item #'identity
+					    (lambda (pt2 rt2)
+					      (if (null pt2)
+						  (funcall next-cont (funcall reducer pt) rt2)
+						  (funcall next-cont (funcall reducer (mapcar #'cons pt pt2)) rt2)))))))
+				    rt))))
+			    token))
+			  (otherwise (error "unexpected start symbol ~A" start-sym)))))))))))
       (lambda (token-list)
 	(let ((parser-list (mapcar
 			    (lambda (spec)
