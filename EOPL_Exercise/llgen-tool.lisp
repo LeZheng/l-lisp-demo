@@ -118,7 +118,15 @@
 			 (if (svref (car r) 1)
 			     (iter-char (append (cdr r) (cdr chars)) src-scanner (cons (car r) tokens))
 			     (reverse tokens))))
-		   (reverse (cons (car (funcall scanner nil)) tokens)))))
+		   (mapcan (lambda (r)
+			     (destructuring-bind (name chars action) (coerce r 'list)
+			       (let ((token (coerce chars 'string)))
+				 (ecase action
+				   (symbol (list (make-symbol token)))
+				   (number (list (read-from-string token)))
+				   (string (list token))
+				   (skip nil)))))
+			   (reverse (cons (car (funcall scanner nil)) tokens))))))
 	  (iter-char (coerce text 'list) src-scanner nil))))))
 
 ;;Grammar    ::= ({Production}∗ )
@@ -141,93 +149,98 @@
 		   (re-read (funcall parser (car tokens)) (cdr tokens))
 		   (cons (car parser) (append (cdr parser) tokens)))))
 	 (rhs->parser (rhs-items reducer next-cont)
+	   ;(format t "enter:~A~%" rhs-items)
 	   (if (null rhs-items)
 	       (funcall next-cont (funcall reducer nil) nil)
 	       (lambda (token)
-		 (let ((rhs-item (car rhs-items)))
-		   (etypecase rhs-item
-		     (string (if (equal token rhs-item)
-				 (rhs->parser (cdr rhs-items) (lambda (tokens) (funcall reducer (cons token tokens))) next-cont)
-				 (funcall next-cont nil (funcall reducer `(,token)))))
-		     (symbol
-		      (case rhs-item
-			(number (if (numberp token)
-				    (rhs->parser (cdr rhs-items) (lambda (tokens) (funcall reducer (cons token tokens))) next-cont)
-				    (funcall next-cont nil (funcall reducer `(,token)))))
-			(identifier
-			 (rhs->parser (cdr rhs-items) (lambda (tokens) (funcall reducer (cons token tokens))) next-cont))
-			(otherwise
-			 (let ((parser-list (gethash rhs-item parser-table)))
-			   (if (null parser-list)
-			       (error "unsupported symbol: ~A" rhs-item)
-			       (labels
-				   ((apply-parsers (token parsers)
-				      (let ((parsers (mapcar #'try-call-parser parsers)))
-					(if (some #'functionp parsers)
-					    (lambda (token) (apply-parsers token parsers))
-					    (let ((result (reduce (lambda (&optional a b)
-								    (if (and a b)
-									(if (< (length (cdr a)) (length  (cdr b)))
-									    a
-									    b)))
-								  parsers)))
-					      (funcall next-cont (car result) (cdr result)))))))
-				 (apply-parsers token parser-list)))))))
-		     (cons
-		      (let ((start-sym (car rhs-item)))
-			(case start-sym
- 			  (arbno
-			   (funcall
-			    (rhs->parser
-			     (cdr rhs-item)
-			     #'identity
-			     (lambda (pt rt)
-			       (if (null pt)
-				   (funcall next-cont nil (funcall reducer rt))
-				   (re-read
-				    (rhs->parser rhs-item #'identity
-						 (lambda (pt2 rt2)
-						   (if (null pt2)
-						       (funcall next-cont (funcall reducer pt) rt2)
-						       (funcall next-cont (funcall reducer (mapcar #'cons pt pt2)) rt2))))
-				    rt))))
-			    token))
-			  (separated-list
-			   (funcall
-			    (rhs->parser
-			     (butlast (cdr rhs-item))
-			     #'identity
-			     (lambda (pt rt)
-			       (if (null pt)
-				   (funcall next-cont nil (funcall reducer rt))
-				   (re-read
-				    (rhs->parser
-				     (last rhs-item)
-				     #'identity
-				     (lambda (s srt)
-				       (if (null s)
-					   (funcall  next-cont (funcall reducer pt) srt)
-					   (rhs->parser
-					    rhs-item #'identity
-					    (lambda (pt2 rt2)
-					      (if (null pt2)
-						  (funcall next-cont (funcall reducer pt) rt2)
-						  (funcall next-cont (funcall reducer (mapcar #'cons pt pt2)) rt2)))))))
-				    rt))))
-			    token))
-			  (otherwise (error "unexpected start symbol ~A" start-sym)))))))))))
+		 (if (null token)
+		     (funcall next-cont nil (funcall reducer nil))
+		     (let ((rhs-item (car rhs-items)))
+		       (etypecase rhs-item
+			 (string (if (equal token rhs-item)
+				     (rhs->parser (cdr rhs-items) (lambda (tokens) (funcall reducer (cons token tokens))) next-cont)
+				     (funcall next-cont nil (funcall reducer `(,token)))))
+			 (symbol
+			  (case rhs-item
+			    (number (if (numberp token)
+					(rhs->parser (cdr rhs-items) (lambda (tokens) (funcall reducer (cons token tokens))) next-cont)
+					(funcall next-cont nil (funcall reducer `(,token)))))
+			    (identifier
+			     (rhs->parser (cdr rhs-items) (lambda (tokens) (funcall reducer (cons token tokens))) next-cont))
+			    (otherwise
+			     (let ((parser-list (gethash rhs-item parser-table)))
+			       (if (null parser-list)
+				   (error "unsupported symbol: ~A" rhs-item)
+				   (labels
+				       ((apply-parsers (token parsers)
+					  (let ((parsers (mapcar (lambda (p) (try-call-parser p token)) parsers)))
+					    (if (some #'functionp parsers)
+						(lambda (token) (apply-parsers token parsers))
+						(let ((result (reduce (lambda (&optional a b)
+									(if (and a b)
+									    (if (< (length (cdr a)) (length  (cdr b)))
+										a
+										b)))
+								      parsers)))
+						  (funcall next-cont (car result) (cdr result)))))))
+				     (apply-parsers token parser-list)))))))
+			 (cons
+			  (let ((start-sym (car rhs-item)))
+			    (case start-sym
+ 			      (arbno
+			       (funcall
+				(rhs->parser
+				 (cdr rhs-item)
+				 #'identity
+				 (lambda (pt rt)
+				   (if (null pt)
+				       (funcall next-cont nil (funcall reducer rt))
+				       (re-read
+					(rhs->parser rhs-item #'identity
+						     (lambda (pt2 rt2)
+						       (if (null pt2)
+							   (funcall next-cont (funcall reducer pt) rt2)
+							   (funcall next-cont (funcall reducer (mapcar #'cons pt pt2)) rt2))))
+					rt))))
+				token))
+			      (separated-list
+			       (funcall
+				(rhs->parser
+				 (butlast (cdr rhs-item))
+				 #'identity
+				 (lambda (pt rt)
+				   (if (null pt)
+				       (funcall next-cont nil (funcall reducer rt))
+				       (re-read
+					(rhs->parser
+					 (last rhs-item)
+					 #'identity
+					 (lambda (s srt)
+					   (if (null s)
+					       (funcall  next-cont (funcall reducer pt) srt)
+					       (rhs->parser
+						rhs-item #'identity
+						(lambda (pt2 rt2)
+						  (if (null pt2)
+						      (funcall next-cont (funcall reducer pt) rt2)
+						      (funcall next-cont (funcall reducer (mapcar #'cons pt pt2)) rt2)))))))
+					rt))))
+				token))
+			      (otherwise (error "unexpected start symbol ~A" start-sym))))))))))))
       (lambda (token-list)
 	(let ((parser-list (mapcar
 			    (lambda (spec)
 			      (destructuring-bind (lhs rhs-items prod-name) spec
 				(let ((parser (rhs->parser rhs-items #'identity (lambda (tokens rt)
-										  (cons (cons prod-name tokens) rt))))
+										  (format t "parsed:~A ~A~%" prod-name tokens)
+										  (if tokens (cons (cons prod-name tokens) rt)))))
 				      (prev-parsers (gethash lhs parser-table)))
 				  (setf (gethash lhs parser-table) (cons parser prev-parsers));;side effect
 				  parser)))
 			    grammar-spec)))
 	  (labels
 	      ((iter-token (tokens parsers reducer)
+		 (format t "iter: ~A ~A~%" tokens (some #'functionp parsers))
 		 (if (some #'functionp parsers)
 		     (iter-token (cdr tokens)
 				 (mapcar (lambda (parser) (try-call-parser parser (car tokens))) parsers)
@@ -239,10 +252,11 @@
 					 p1
 					 p2)))
 			       parsers)))
+		       (format t "iter result: ~A~%" r)
 		       (if r
 			   (iter-token tokens parser-list (lambda (rs) (funcall reducer (cons r rs))))
 			   (funcall reducer nil))))))
-	    (iter-token token-list parser-list)))))))
+	    (iter-token token-list parser-list #'identity)))))))
 
 (setf scanner-spec-a
   '((white-sp (whitespace) skip)
@@ -279,6 +293,11 @@
   (funcall (make-string-scanner the-lexical-spec)
 	   "asdf  1234  -4321   // skdlajf "))
 
+(defun test-parse ()
+  (format t "---------------------- test scan --------------------------")
+  (let ((p (make-token-parser the-grammar)))
+    (funcall p (list "-" "(" 1 "," 2 ")"))))
+
 (defun scan1 (s)
   (funcall (make-string-scanner the-lexical-spec)
 	   s))
@@ -286,5 +305,5 @@
 (defun scan&parse1 (s)
   (funcall (make-string-parser the-lexical-spec the-grammar) s))
 
-(defun test-parse ()
-  (scan&parse1 "let x = y u1 = 321 in z "))
+;;(defun test-parse ()
+;;  (scan&parse1 "let x = y u1 = 321 in z "))
