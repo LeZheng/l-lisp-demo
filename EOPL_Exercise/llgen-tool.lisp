@@ -149,19 +149,17 @@
 		   (re-read (funcall parser (car tokens)) (cdr tokens))
 		   (cons (car parser) (append (cdr parser) tokens)))))
 	 (rhs->parser (rhs-items reducer next-cont)
-	   ;(format t "enter:~A~%" rhs-items)
+	   ;;(format t "enter:~A~%" rhs-items)
 	   (if (null rhs-items)
 	       (funcall next-cont (funcall reducer nil) nil)
-	       (lambda (token)
-		 (if (null token)
-		     (funcall next-cont nil (funcall reducer nil))
-		     (let ((rhs-item (car rhs-items)))
-		       (etypecase rhs-item
-			 (string (if (equal token rhs-item)
-				     (rhs->parser (cdr rhs-items) (lambda (tokens) (funcall reducer (cons token tokens))) next-cont)
-				     (funcall next-cont nil (funcall reducer `(,token)))))
-			 (symbol
-			  (case rhs-item
+	       (let ((rhs-item (car rhs-items)))
+		 (labels
+		     ((parse-string (token)
+			(if (equal token rhs-item)
+			    (rhs->parser (cdr rhs-items) (lambda (tokens) (funcall reducer (cons token tokens))) next-cont)
+			    (funcall next-cont nil (funcall reducer `(,token)))))
+		      (parse-symbol (token)
+			(case rhs-item
 			    (number (if (numberp token)
 					(rhs->parser (cdr rhs-items) (lambda (tokens) (funcall reducer (cons token tokens))) next-cont)
 					(funcall next-cont nil (funcall reducer `(,token)))))
@@ -184,49 +182,58 @@
 								      parsers)))
 						  (funcall next-cont (car result) (cdr result)))))))
 				     (apply-parsers token parser-list)))))))
-			 (cons
-			  (let ((start-sym (car rhs-item)))
-			    (case start-sym
- 			      (arbno
-			       (funcall
-				(rhs->parser
-				 (cdr rhs-item)
-				 #'identity
-				 (lambda (pt rt)
-				   (if (null pt)
-				       (funcall next-cont nil (funcall reducer rt))
-				       (re-read
-					(rhs->parser rhs-item #'identity
-						     (lambda (pt2 rt2)
-						       (if (null pt2)
-							   (funcall next-cont (funcall reducer pt) rt2)
-							   (funcall next-cont (funcall reducer (mapcar #'cons pt pt2)) rt2))))
-					rt))))
-				token))
-			      (separated-list
-			       (funcall
-				(rhs->parser
-				 (butlast (cdr rhs-item))
-				 #'identity
-				 (lambda (pt rt)
-				   (if (null pt)
-				       (funcall next-cont nil (funcall reducer rt))
-				       (re-read
+		      (parse-arbno (token)
+			(funcall
+			 (rhs->parser
+			  (cdr rhs-item)
+			  #'identity
+			  (lambda (pt rt)
+			    (if (null pt)
+				(funcall next-cont nil (funcall reducer rt))
+				(re-read
+				 (rhs->parser rhs-item #'identity
+					      (lambda (pt2 rt2)
+						(if (null pt2)
+						    (funcall next-cont (funcall reducer pt) rt2)
+						    (funcall next-cont (funcall reducer (mapcar #'cons pt pt2)) rt2))))
+				 rt))))
+			 token))
+		      (parse-separated-list (token)
+			(funcall
+			 (rhs->parser
+			  (butlast (cdr rhs-item))
+			  #'identity
+			  (lambda (pt rt)
+			    (if (null pt)
+				(funcall next-cont nil (funcall reducer rt))
+				(re-read
+				 (rhs->parser
+				  (last rhs-item)
+				  #'identity
+				  (lambda (s srt)
+				    (if (null s)
+					(funcall  next-cont (funcall reducer pt) srt)
 					(rhs->parser
-					 (last rhs-item)
-					 #'identity
-					 (lambda (s srt)
-					   (if (null s)
-					       (funcall  next-cont (funcall reducer pt) srt)
-					       (rhs->parser
-						rhs-item #'identity
-						(lambda (pt2 rt2)
-						  (if (null pt2)
-						      (funcall next-cont (funcall reducer pt) rt2)
-						      (funcall next-cont (funcall reducer (mapcar #'cons pt pt2)) rt2)))))))
-					rt))))
-				token))
-			      (otherwise (error "unexpected start symbol ~A" start-sym))))))))))))
+					 rhs-item #'identity
+					 (lambda (pt2 rt2)
+					   (if (null pt2)
+					       (funcall next-cont (funcall reducer pt) rt2)
+					       (funcall next-cont (funcall reducer (mapcar #'cons pt pt2)) rt2)))))))
+				 rt))))
+			 token)))
+		   (lambda (token)
+		     (if (null token)
+			 (funcall next-cont nil (funcall reducer nil))
+			 (let ((rhs-item (car rhs-items)))
+			   (etypecase rhs-item
+			     (string (parse-string token))
+			     (symbol (parse-symbol token))
+			     (cons
+			      (let ((start-sym (car rhs-item)))
+				(case start-sym
+ 				  (arbno (parse-arbno token))
+				  (separated-list (parse-separated-list))
+				  (otherwise (error "unexpected start symbol ~A" start-sym))))))))))))))
       (lambda (token-list)
 	(let ((parser-list (mapcar
 			    (lambda (spec)
@@ -240,7 +247,7 @@
 			    grammar-spec)))
 	  (labels
 	      ((iter-token (tokens parsers reducer)
-		 (format t "iter: ~A ~A~%" tokens (some #'functionp parsers))
+		 (format t "iter: ~A ~A ~A~%" tokens (some #'functionp parsers) parsers)
 		 (if (some #'functionp parsers)
 		     (iter-token (cdr tokens)
 				 (mapcar (lambda (parser) (try-call-parser parser (car tokens))) parsers)
@@ -289,12 +296,12 @@
 	 let-exp)))
 
 (defun test-scan ()
-  (format t "---------------------- test scan --------------------------")
+  (format t "---------------------- test scan --------------------------~%")
   (funcall (make-string-scanner the-lexical-spec)
 	   "asdf  1234  -4321   // skdlajf "))
 
 (defun test-parse ()
-  (format t "---------------------- test scan --------------------------")
+  (format t "---------------------- test parse --------------------------~%")
   (let ((p (make-token-parser the-grammar)))
     (funcall p (list "-" "(" 1 "," 2 ")"))))
 
