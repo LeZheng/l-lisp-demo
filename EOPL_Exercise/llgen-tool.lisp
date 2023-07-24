@@ -180,7 +180,12 @@
 										a
 										b)))
 								      parsers)))
-						  (funcall next-cont (car result) (cdr result)))))))
+						  (format t "apply-parsers result: ~A~%" result);;TODO result is nil
+						  (re-read
+						   (rhs->parser (cdr rhs-items) (lambda (tokens) (funcall reducer (cons (car result) tokens))) next-cont)
+						   (cdr result))
+						  ;;(funcall next-cont (funcall reducer (car result)) (cdr result))
+						  )))))
 				     (apply-parsers token parser-list)))))))
 		      (parse-arbno (token)
 			(funcall
