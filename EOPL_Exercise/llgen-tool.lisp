@@ -149,7 +149,6 @@
 		   (re-read (funcall parser (car tokens)) (cdr tokens))
 		   (cons (car parser) (append (cdr parser) tokens)))))
 	 (rhs->parser (rhs-items reducer next-cont)
-	   ;;(format t "enter:~A~%" rhs-items)
 	   (if (null rhs-items)
 	       (funcall next-cont (funcall reducer nil) nil)
 	       (let ((rhs-item (car rhs-items)))
@@ -164,7 +163,9 @@
 					(rhs->parser (cdr rhs-items) (lambda (tokens) (funcall reducer (cons token tokens))) next-cont)
 					(funcall next-cont nil (funcall reducer `(,token)))))
 			    (identifier
-			     (rhs->parser (cdr rhs-items) (lambda (tokens) (funcall reducer (cons token tokens))) next-cont))
+			     (if (not (numberp token))
+				 (rhs->parser (cdr rhs-items) (lambda (tokens) (funcall reducer (cons token tokens))) next-cont)
+				 (funcall next-cont nil (funcall reducer `(,token)))))
 			    (otherwise
 			     (let ((parser-list (gethash rhs-item parser-table)))
 			       (if (null parser-list)
@@ -175,17 +176,16 @@
 					    (if (some #'functionp parsers)
 						(lambda (token) (apply-parsers token parsers))
 						(let ((result (reduce (lambda (&optional a b)
-									(if (and a b)
-									    (if (< (length (cdr a)) (length  (cdr b)))
+									(cond
+									  ((null a) b)
+									  ((null b) a)
+									  (t (if (< (length (cdr a)) (length  (cdr b)))
 										a
-										b)))
+										b))))
 								      parsers)))
-						  (format t "apply-parsers result: ~A~%" result);;TODO result is nil
 						  (re-read
 						   (rhs->parser (cdr rhs-items) (lambda (tokens) (funcall reducer (cons (car result) tokens))) next-cont)
-						   (cdr result))
-						  ;;(funcall next-cont (funcall reducer (car result)) (cdr result))
-						  )))))
+						   (cdr result)))))))
 				     (apply-parsers token parser-list)))))))
 		      (parse-arbno (token)
 			(funcall
@@ -244,7 +244,6 @@
 			    (lambda (spec)
 			      (destructuring-bind (lhs rhs-items prod-name) spec
 				(let ((parser (rhs->parser rhs-items #'identity (lambda (tokens rt)
-										  (format t "parsed:~A ~A~%" prod-name tokens)
 										  (if tokens (cons (cons prod-name tokens) rt)))))
 				      (prev-parsers (gethash lhs parser-table)))
 				  (setf (gethash lhs parser-table) (cons parser prev-parsers));;side effect
@@ -252,7 +251,6 @@
 			    grammar-spec)))
 	  (labels
 	      ((iter-token (tokens parsers reducer)
-		 (format t "iter: ~A ~A ~A~%" tokens (some #'functionp parsers) parsers)
 		 (if (some #'functionp parsers)
 		     (iter-token (cdr tokens)
 				 (mapcar (lambda (parser) (try-call-parser parser (car tokens))) parsers)
@@ -264,7 +262,6 @@
 					 p1
 					 p2)))
 			       parsers)))
-		       (format t "iter result: ~A~%" r)
 		       (if r
 			   (iter-token tokens parser-list (lambda (rs) (funcall reducer (cons r rs))))
 			   (funcall reducer nil))))))
