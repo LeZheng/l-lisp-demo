@@ -256,11 +256,13 @@
 				 (mapcar (lambda (parser) (try-call-parser parser (car tokens))) parsers)
 				 reducer)
 		     (let ((r (reduce
-			       (lambda (&optional p1 p2)
-				 (if (and p1 p2)
-				     (if (< (length (cdr p1)) (length (cdr p2)))
-					 p1
-					 p2)))
+			       (lambda (&optional a b)
+				 (cond
+				   ((null a) b)
+				   ((null b) a)
+				   (t (if (< (length (cdr a)) (length  (cdr b)))
+					  a
+					  b))))
 			       parsers)))
 		       (if r
 			   (iter-token tokens parser-list (lambda (rs) (funcall reducer (cons r rs))))
@@ -305,7 +307,9 @@
 (defun test-parse ()
   (format t "---------------------- test parse --------------------------~%")
   (let ((p (make-token-parser the-grammar)))
-    (funcall p (list "-" "(" 1 "," 2 ")"))))
+    (format t "~A~%" (funcall p (list "-" "(" 1 "," 2 ")")))
+    (format t "~A~%" (funcall p (list "zero?" "(" 1 ")")))
+    (format t "~A~%" (funcall p (list "let" 'x "=" 'y 'u1 "=" 321 "in" 'z)))))
 
 (defun scan1 (s)
   (funcall (make-string-scanner the-lexical-spec)
