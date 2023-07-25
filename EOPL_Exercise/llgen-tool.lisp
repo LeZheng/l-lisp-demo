@@ -196,11 +196,13 @@
 			    (if (null pt)
 				(funcall next-cont nil (funcall reducer rt))
 				(re-read
-				 (rhs->parser rhs-item #'identity
+				 (rhs->parser rhs-items #'identity
 					      (lambda (pt2 rt2)
 						(if (null pt2)
 						    (funcall next-cont (funcall reducer pt) rt2)
-						    (funcall next-cont (funcall reducer (mapcar #'cons pt pt2)) rt2))))
+						    (funcall next-cont
+							     (funcall reducer (mapcar (lambda (a b) (if (atom b) (list a b) (cons a b))) pt pt2))
+							     rt2))))
 				 rt))))
 			 token))
 		      (parse-separated-list (token)
@@ -309,7 +311,7 @@
   (let ((p (make-token-parser the-grammar)))
     (format t "~A~%" (funcall p (list "-" "(" 1 "," 2 ")")))
     (format t "~A~%" (funcall p (list "zero?" "(" 1 ")")))
-    (format t "~A~%" (funcall p (list "let" 'x "=" 'y 'u1 "=" 321 "in" 'z)))))
+    (format t "~A~%" (funcall p (list "let" 'x "=" 'y 'u1 "=" 321 'a "=" 33 "in" 'z)))))
 
 (defun scan1 (s)
   (funcall (make-string-scanner the-lexical-spec)
