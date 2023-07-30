@@ -187,7 +187,7 @@
 						   (rhs->parser (cdr rhs-items) (lambda (tokens) (funcall reducer (cons (car result) tokens))) next-cont)
 						   (cdr result)))))))
 				     (apply-parsers token parser-list)))))))
-		      (parse-arbno (token)
+		      (parse-arbno (token) ;;TODO (cdr rhs-items)
 			(funcall
 			 (rhs->parser
 			  (cdr rhs-item)
@@ -199,13 +199,13 @@
 				 (rhs->parser rhs-items #'identity
 					      (lambda (pt2 rt2)
 						(if (null pt2)
-						    (funcall next-cont (funcall reducer pt) rt2)
+						    (funcall next-cont (funcall reducer (mapcar (lambda (a) (cons a nil)) pt)) rt2)
 						    (funcall next-cont
-							     (funcall reducer (mapcar (lambda (a b) (if (atom b) (list a b) (cons a b))) pt pt2))
+							     (funcall reducer (mapcar #'cons pt pt2))
 							     rt2))))
 				 rt))))
 			 token))
-		      (parse-separated-list (token)
+		      (parse-separated-list (token)  ;;TODO (cdr rhs-items)
 			(funcall
 			 (rhs->parser
 			  (butlast (cdr rhs-item))
@@ -219,9 +219,9 @@
 				  #'identity
 				  (lambda (s srt)
 				    (if (null s)
-					(funcall  next-cont (funcall reducer pt) srt)
+					(funcall  next-cont (funcall reducer (mapcar (lambda (a) (cons a nil)) pt)) srt)
 					(rhs->parser
-					 rhs-item #'identity
+					 rhs-items #'identity
 					 (lambda (pt2 rt2)
 					   (if (null pt2)
 					       (funcall next-cont (funcall reducer pt) rt2)
@@ -239,7 +239,7 @@
 			      (let ((start-sym (car rhs-item)))
 				(case start-sym
  				  (arbno (parse-arbno token))
-				  (separated-list (parse-separated-list))
+				  (separated-list (parse-separated-list token))
 				  (otherwise (error "unexpected start symbol ~A" start-sym))))))))))))))
       (lambda (token-list)
 	(let ((parser-list (mapcar
@@ -296,6 +296,9 @@
 	(expression
 	 ("if" expression "then" expression "else" expression)
 	 if-exp)
+	(expression
+	 ("[" (separated-list expression ",") "]")
+	 array-exp)
 	(expression (identifier) var-exp)
 	(expression
 	 ("let" (arbno identifier "=" expression) "in" expression)
@@ -311,7 +314,8 @@
   (let ((p (make-token-parser the-grammar)))
     (format t "~A~%" (funcall p (list "-" "(" 1 "," 2 ")")))
     (format t "~A~%" (funcall p (list "zero?" "(" 1 ")")))
-    (format t "~A~%" (funcall p (list "let" 'x "=" 'y 'u1 "=" 321 'a "=" 33 "in" 'z)))))
+    (format t "~A~%" (funcall p (list "let" 'x "=" 'y 'u1 "=" 321 'a "=" 33 "in" 'z)))
+    (format t "~A~%" (funcall p (list "[" 'x "," 'y "," 1  "]")))))
 
 (defun scan1 (s)
   (funcall (make-string-scanner the-lexical-spec)
