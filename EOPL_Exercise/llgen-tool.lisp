@@ -187,60 +187,59 @@
 						   (rhs->parser (cdr rhs-items) (lambda (tokens) (funcall reducer (cons (car result) tokens))) next-cont)
 						   (cdr result)))))))
 				     (apply-parsers token parser-list)))))))
-		      (parse-arbno (token) ;;TODO (cdr rhs-items)
-			(funcall
-			 (rhs->parser
-			  (cdr rhs-item)
-			  #'identity
-			  (lambda (pt rt)
-			    (if (null pt)
-				(funcall next-cont nil (funcall reducer rt))
-				(re-read
-				 (rhs->parser rhs-items #'identity
-					      (lambda (pt2 rt2)
-						(if (null pt2)
-						    (funcall next-cont (funcall reducer (mapcar (lambda (a) (cons a nil)) pt)) rt2)
-						    (funcall next-cont
-							     (funcall reducer (mapcar #'cons pt pt2))
-							     rt2))))
-				 rt))))
-			 token))
-		      (parse-separated-list (token)  ;;TODO (cdr rhs-items)
-			(funcall
-			 (rhs->parser
-			  (butlast (cdr rhs-item))
-			  #'identity
-			  (lambda (pt rt)
-			    (if (null pt)
-				(funcall next-cont nil (funcall reducer rt))
-				(re-read
-				 (rhs->parser
-				  (last rhs-item)
-				  #'identity
-				  (lambda (s srt)
-				    (if (null s)
-					(funcall  next-cont (funcall reducer (mapcar (lambda (a) (cons a nil)) pt)) srt)
-					(rhs->parser
-					 rhs-items #'identity
-					 (lambda (pt2 rt2)
-					   (if (null pt2)
-					       (funcall next-cont (funcall reducer pt) rt2)
-					       (funcall next-cont (funcall reducer (mapcar #'cons pt pt2)) rt2)))))))
-				 rt))))
-			 token)))
+		      (parse-arbno (token)
+			(labels
+			    ((next-parser (arbno-cont)
+			       (rhs->parser
+				(cdr rhs-items)
+			        #'identity
+				(lambda (pt rt)
+				  (if (null pt)
+				      (funcall arbno-cont nil rt)
+				      (re-read
+				       (next-parser (lambda (pt2 rt2) (funcall arbno-cont (cons pt pt2) rt2)))
+				       rt))))))
+			  (funcall (next-parser next-cont) token)))
+		      (parse-separated-list (token)
+			(labels
+			    ((next-parser (cont)
+			       (rhs->parser
+				(butlast (cdr rhs-items))
+				#'identity
+				(lambda (pt rt)
+				  (if (null pt)
+				      (funcall cont nil rt)
+				      (re-read
+				       (rhs->parser
+					(last rhs-items)
+					#'identity
+					(lambda (s srt)
+					  (if (null s)
+					      (funcall cont pt srt)
+					      (re-read
+					       (next-parser (lambda (pt2 rt2) (funcall cont (cons pt (cons (car s) pt2)) rt2)))
+					       srt))))
+				       rt))))))
+			  (funcall (next-parser next-cont) token))))
 		   (lambda (token)
 		     (if (null token)
 			 (funcall next-cont nil (funcall reducer nil))
 			 (let ((rhs-item (car rhs-items)))
 			   (etypecase rhs-item
 			     (string (parse-string token))
-			     (symbol (parse-symbol token))
+			     (symbol (case rhs-item
+				       (arbno (parse-arbno token))
+				       (separated-list (parse-separated-list token))
+				       (otherwise (parse-symbol token))))
 			     (cons
-			      (let ((start-sym (car rhs-item)))
-				(case start-sym
- 				  (arbno (parse-arbno token))
-				  (separated-list (parse-separated-list token))
-				  (otherwise (error "unexpected start symbol ~A" start-sym))))))))))))))
+			      (funcall
+			       (rhs->parser rhs-item #'identity
+					   (lambda (pt rt)
+					     (re-read
+					      (rhs->parser (cdr rhs-items) (lambda (tokens) (funcall reducer (cons pt tokens))) next-cont)
+					      rt)))
+			       token)
+			      ))))))))))
       (lambda (token-list)
 	(let ((parser-list (mapcar
 			    (lambda (spec)
@@ -315,7 +314,8 @@
     (format t "~A~%" (funcall p (list "-" "(" 1 "," 2 ")")))
     (format t "~A~%" (funcall p (list "zero?" "(" 1 ")")))
     (format t "~A~%" (funcall p (list "let" 'x "=" 'y 'u1 "=" 321 'a "=" 33 "in" 'z)))
-    (format t "~A~%" (funcall p (list "[" 'x "," 'y "," 1  "]")))))
+    (format t "~A~%" (funcall p (list "[" 'x "," 'y "," 1  "]")))
+    ))
 
 (defun scan1 (s)
   (funcall (make-string-scanner the-lexical-spec)
