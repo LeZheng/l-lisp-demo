@@ -96,13 +96,15 @@
 				     #'identity
 				     (lambda (token-chars remain-chars)
 				       (if token-chars
-					   (regexp->scanner
-					    regexp
-					    #'identity
-					    (lambda (tc2 rc2)
-					      (if tc2
-						  (funcall next-cont (funcall reducer (append token-chars tc2)) rc2)
-						  (funcall next-cont (funcall reducer token-chars) rc2))))
+					   (re-read
+					    (regexp->scanner
+					     regexp
+					     #'identity
+					     (lambda (tc2 rc2)
+					       (if tc2
+						   (funcall next-cont (funcall reducer (append token-chars tc2)) rc2)
+						   (funcall next-cont (funcall reducer token-chars) rc2))))
+					    remain-chars)
 					   (funcall next-cont nil (funcall reducer remain-chars)))))
 				    c))
 			    (concat
@@ -270,6 +272,23 @@
 			   (funcall reducer nil))))))
 	    (iter-token token-list parser-list #'identity)))))))
 
+(defun make-string-parser (lexical-spec grammar)
+  (labels ((walk (l)
+	     (let ((value (car l)))
+	       (cond
+		 ((stringp value) (cons value (walk (cdr l))))
+		 ((consp value) (append (walk value) (walk (cdr l))))
+		 ((null value) '())
+		 (t (walk (cdr l)))))))
+    (let ((keywords '()))
+      (mapcar (lambda (k) (adjoin k keywords)) (walk grammar))
+      (let ((scanner (make-string-scanner (cons (list 'keyword (cons 'or keywords) 'string)
+						lexical-spec)))
+	    (parser (make-token-parser grammar)))
+	(lambda (text)
+	  (let ((tokens (funcall scanner text)))
+	    (funcall parser tokens)))))))
+
 (setf scanner-spec-a
   '((white-sp (whitespace) skip)
     (comment ("%" (arbno (not #\newline))) skip)
@@ -306,7 +325,7 @@
 (defun test-scan ()
   (format t "---------------------- test scan --------------------------~%")
   (funcall (make-string-scanner the-lexical-spec)
-	   "asdf  1234  -4321   // skdlajf "))
+	   "let x = y u1 = 321 in z "))
 
 (defun test-parse ()
   (format t "---------------------- test parse --------------------------~%")
@@ -324,5 +343,5 @@
 (defun scan&parse1 (s)
   (funcall (make-string-parser the-lexical-spec the-grammar) s))
 
-;;(defun test-parse ()
-;;  (scan&parse1 "let x = y u1 = 321 in z "))
+(defun test-parse () 
+ (scan&parse1 "let x = y u1 = 321 in z "))
