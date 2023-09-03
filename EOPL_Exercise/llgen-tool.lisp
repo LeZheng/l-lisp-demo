@@ -35,7 +35,7 @@
 				 exp
 				 #'identity
 				 (lambda (token-chars remain-chars)
-				   (if token-chars
+				   (if (or token-chars (equal (car exp) 'arbno))
 				       (re-read (regexp->scanner
 						 (cdr regexp)
 						 (lambda (s) (funcall reducer (append token-chars s)))
@@ -105,7 +105,7 @@
 						   (funcall next-cont (funcall reducer (append token-chars tc2)) rc2)
 						   (funcall next-cont (funcall reducer token-chars) rc2))))
 					    remain-chars)
-					   (funcall next-cont nil (funcall reducer remain-chars)))))
+					   (funcall next-cont (funcall reducer nil) remain-chars))))
 				    c))
 			    (concat
 			     (funcall (regexp->scanner (cdr regexp) reducer next-cont) c))))))))))))
@@ -117,9 +117,11 @@
 		   (let ((r (funcall scanner (car chars))))
 		     (if (functionp r)
 			 (iter-char (cdr chars) r tokens)
-			 (if (svref (car r) 1)
+			 (progn
+			   (format t "iter token: ~A~%" r)
+			   (if (svref (car r) 1)
 			     (iter-char (append (cdr r) (cdr chars)) src-scanner (cons (car r) tokens))
-			     (reverse tokens))))
+			     (reverse tokens)))))
 		   (mapcan (lambda (r)
 			     (destructuring-bind (name chars action) (coerce r 'list)
 			       (let ((token (coerce chars 'string)))
@@ -296,7 +298,7 @@
     (number (digit (arbno digit)) number)))
 
 (setf the-lexical-spec
-      '((whitespace ((or #\Space #\NewLine) (arbno (or #\Space #\NewLine))) skip)
+      '((whitespace (concat (or #\Space #\NewLine) (arbno (or #\Space #\NewLine))) skip)
 	(comment ("//" (arbno (not #\Newline))) skip)
 	(identifier (letter (arbno (or letter digit "_" "-" "?"))) symbol)
 	(number (digit (arbno digit)) number)
@@ -325,7 +327,7 @@
 (defun test-scan ()
   (format t "---------------------- test scan --------------------------~%")
   (funcall (make-string-scanner the-lexical-spec)
-	   "let x = y u1 = 321 in z "))
+	   "123 asdf  -432 iuo3u //asdf "))
 
 (defun test-parse ()
   (format t "---------------------- test parse --------------------------~%")
