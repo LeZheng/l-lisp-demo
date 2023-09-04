@@ -7,6 +7,7 @@
 ;;Action            ::= skip | symbol | number | string
 
 (defun make-string-scanner (scanner-spec)
+  (format t "lexical spec:~A~%" scanner-spec)
   (labels
       ((concat-reducer (reducer c)
 	 (lambda (s) (funcall reducer (cons c s))))
@@ -71,7 +72,7 @@
 					     (let ((result (reduce
 							    (lambda (&optional a b)
 							      (if (and a b)
-								  (if (> (result-length (car a)) (result-length  (car b)))
+								  (if (>= (result-length (car a)) (result-length  (car b)))
 								      a
 								      b)))
 							    scanners)))
@@ -283,12 +284,13 @@
 		 ((null value) '())
 		 (t (walk (cdr l)))))))
     (let ((keywords '()))
-      (mapcar (lambda (k) (adjoin k keywords)) (walk grammar))
+      (mapcar (lambda (k) (pushnew k keywords)) (walk grammar))
       (let ((scanner (make-string-scanner (cons (list 'keyword (cons 'or keywords) 'string)
 						lexical-spec)))
 	    (parser (make-token-parser grammar)))
 	(lambda (text)
 	  (let ((tokens (funcall scanner text)))
+	    (format t "parsed tokens: ~A~%" tokens)
 	    (funcall parser tokens)))))))
 
 (setf scanner-spec-a
