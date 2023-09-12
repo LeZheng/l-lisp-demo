@@ -293,6 +293,30 @@
 	    (format t "parsed tokens: ~A~%" tokens)
 	    (funcall parser tokens)))))))
 
+;;(defstruct (person (:constructor make-person (name age sex)) (:predicate person?)) name age sex)
+;;(defstruct (student (:constructor make-student (name age sex school)) (:include person)) school)
+
+(defmacro define-datatype (type-name predicate-name &rest variants)
+  `(labels ((list-of (pred)
+	      (lambda (val)
+		(or (null val)
+		 (and (consp val)
+		  (funcall pred (car val))
+		  (funcall (list-of pred) (cdr val)))))))
+     (defstruct (,type-name (:predicate ,predicate-name)))
+     ,@(mapcar (lambda (variant)
+		 (destructuring-bind (variant-name &rest variant-slots) variant
+		   `(defstruct (,variant-name)
+		      ,@(mapcar
+			 (lambda (slot)
+			   (destructuring-bind (field-name predicate) slot
+			     field-name
+			     ;;todo handle slot
+			     ))
+			 variant-slots)))
+		 )
+	       variants)))
+
 (setf scanner-spec-a
   '((white-sp (whitespace) skip)
     (comment ("%" (arbno (not #\newline))) skip)
