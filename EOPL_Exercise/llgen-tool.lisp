@@ -119,7 +119,7 @@
 		     (if (functionp r)
 			 (iter-char (cdr chars) r tokens)
 			 (progn
-			   (format t "iter token: ~A~%" r)
+			   ;;(format t "iter token: ~A~%" r)
 			   (if (svref (car r) 1)
 			     (iter-char (append (cdr r) (cdr chars)) src-scanner (cons (car r) tokens))
 			     (reverse tokens)))))
@@ -185,8 +185,8 @@
 									  ((null a) b)
 									  ((null b) a)
 									  (t (if (< (length (cdr a)) (length  (cdr b)))
-										a
-										b))))
+										 a
+										 b))))
 								      parsers)))
 						  (re-read
 						   (rhs->parser (cdr rhs-items) (lambda (tokens) (funcall reducer (cons (car result) tokens))) next-cont)
@@ -231,6 +231,11 @@
 			 (funcall next-cont nil (funcall reducer nil))
 			 (let ((rhs-item (car rhs-items)))
 			   (etypecase rhs-item
+			     (simple-vector
+			      (funcall
+			       (rhs->parser (cons (svref rhs-item 1) (cdr rhs-items))
+					    reducer next-cont)
+			       token))
 			     (string (parse-string token))
 			     (symbol (case rhs-item
 				       (arbno (parse-arbno token))
@@ -279,12 +284,53 @@
   (labels ((walk (l)
 	     (let ((value (car l)))
 	       (cond
+		 ((simple-vector-p value) (append (walk (cons (svref value 1) nil)) (walk (cdr l))))
 		 ((stringp value) (cons value (walk (cdr l))))
 		 ((consp value) (append (walk value) (walk (cdr l))))
 		 ((null value) '())
 		 (t (walk (cdr l)))))))
     (let ((keywords '()))
+      (macrolet ((def-datatype-from-grammar (grammar)
+		   (let ((lhs-variants-map (make-hash-table))
+			 (lhs-list '()))
+		     (labels ((rhs-items->fields (rhs-items &optional (type-wrapper #'identity) (cont #'identity))
+				(if (null rhs-items)
+				    (funcall cont nil)
+				    (let ((rhs-item (car rhs-items)))
+				      (typecase rhs-item
+					(simple-vector
+					 (rhs-items->fields (cdr rhs-items) type-wrapper
+							    (lambda (fields)
+							      (cons (list (svref rhs-item 0) (funcall type-wrapper (svref rhs-item 1))) fields))))
+					(cons
+					 (rhs-items->fields rhs-item
+							    (lambda (field) (funcall type-wrapper `(list-of ,field)))
+							    (lambda (fields)
+							      (rhs-items->fields (cdr rhs-items) type-wrapper
+										 (lambda (fields2) (funcall cont (append fields fields2)))))))
+					(otherwise (rhs-items->fields (cdr rhs-items) type-wrapper cont)))))))
+		       
+		       (dolist (prod grammar)
+			 (let ((lhs (car prod)))
+			   (pushnew lhs lhs-list)
+			   (setf (gethash lhs lhs-variants-map) (cons prod (gethash lhs lhs-variants-map)))))
+		       `(progn
+			  ,@(mapcar (lambda (lhs)
+				      (let ((variant-productions (gethash lhs lhs-variants-map)))
+					`(define-datatype ,lhs ,(intern (concatenate 'string (symbol-name lhs) "-P"))
+					   ,@(mapcar (lambda (production)
+						       (destructuring-bind (lhs rhs-items prod-name) production
+							 `(,prod-name
+							   ,@(rhs-items->fields rhs-items))))
+						     variant-productions))))
+				    lhs-list)))))
+		 (make-datatype-from-ast (ast)
+		   ;;todo
+		   ))
+;;todo
+	)
       (mapcar (lambda (k) (pushnew k keywords)) (walk grammar))
+      (format t "keywords: ~A~%" keywords)
       (let ((scanner (make-string-scanner (cons (list 'keyword (cons 'or keywords) 'string)
 						lexical-spec)))
 	    (parser (make-token-parser grammar)))
@@ -348,6 +394,26 @@
 	(expression (identifier) var-exp)
 	(expression
 	 ("let" (arbno identifier "=" expression) "in" expression)
+	 let-exp)))
+
+(setf the-grammar
+      '((program (#(content expression)) a-program)
+	(expression (#(expr number)) const-exp)
+	(expression
+	 ("-" "(" #(minuend expression) "," #(subtrahend expression) ")")
+	 diff-exp)
+	(expression
+	 ("zero?" "(" #(expr expression) ")")
+	 zero?-exp)
+	(expression
+	 ("if" #(condition expression) "then" #(then-expr expression) "else" #(else-expr expression))
+	 if-exp)
+	(expression
+	 ("[" (separated-list #(exprs expression) ",") "]")
+	 array-exp)
+	(expression (#(identifier identifier)) var-exp)
+	(expression
+	 ("let" (arbno #(vars identifier) "=" #(exprs expression)) "in" #(body expression))
 	 let-exp)))
 
 (defun test-scan ()
