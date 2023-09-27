@@ -276,7 +276,7 @@
 					  b))))
 			       parsers)))
 		       (if r
-			   (iter-token tokens parser-list (lambda (rs) (funcall reducer (cons r rs))))
+			   (iter-token (if (cdr r) (append (cdr r) tokens) tokens) parser-list (lambda (rs) (funcall reducer (cons (car r) rs))))
 			   (funcall reducer nil))))))
 	    (iter-token token-list parser-list #'identity)))))))
 
@@ -437,5 +437,5 @@
 (defun scan&parse1 (s)
   (funcall (make-string-parser the-lexical-spec the-grammar) s))
 
-(defun test-parse () 
+(defun test-scan-parse () 
  (scan&parse1 "let x = y u1 = 321 in z "))
