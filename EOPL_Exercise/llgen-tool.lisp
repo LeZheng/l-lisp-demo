@@ -331,11 +331,24 @@
 				    (lambda (ast)
 				      (let (rhs-item (car rhs-items))
 					(etypecase rhs-item ;;todo
-					  (cons )
-					  (symbol )
-					  (simple-vector )
+					  (cons (if (consp (car ast))
+						    (append
+						     (funcall
+						      (rhs-items->builder rhs-item (lambda (args) (cons 'list-of args)))
+						      (car ast))
+						     (funcall (rhs-items->builder (cdr rhs-items) data-wrapper) (cdr ast)))
+						    (error "ast's head is not a cons ~A" ast)))
+					  (symbol
+					   (case rhs-item
+					     (arbno )
+					     (separated-list )
+					     ( )))
+					  (simple-vector
+					   (cons (intern (symbol-name (svref rhs-item 0)) 'keyword)
+						 (cons (funcall (gethash (caar ast) builder-map) (cdar ast))
+						       (funcall (rhs-items->builder (cdr rhs-items) data-wrapper) (cdr ast)))))
 					  (string (if (equal rhs-item (car ast))
-						      (funcall rhs-items->builder (cdr rhs-items) data-wrapper)
+						      (funcall (rhs-items->builder (cdr rhs-items) data-wrapper) (cdr ast))
 						      (error "string is not equal:'~A' and '~A'" (car ast) rhs-item)))))))))
 		       (dolist (production grammer)
 			 (destructuring-bind (lhs rhs-items prod-name) production
@@ -345,7 +358,7 @@
 			      (builder (gethash prod-type builder-map)))
 			 (if (null builder)
 			     (error "Can not find builder for production: ~A~%" prod-name)
-			     (funcall builder ast)))))))
+			     (funcall builder (cdr ast))))))))
 	;;todo
 	)
       (mapcar (lambda (k) (pushnew k keywords)) (walk grammar))
