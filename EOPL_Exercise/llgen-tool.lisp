@@ -289,78 +289,6 @@
 			 ((null value) '())
 			 (t (walk (cdr l)))))))
     (let ((keywords '()))
-      (macrolet ((def-datatype-from-grammar (grammar)
-		   (let ((lhs-variants-map (make-hash-table))
-			 (lhs-list '()))
-		     (labels ((rhs-items->fields (rhs-items &optional (type-wrapper #'identity) (cont #'identity))
-				(if (null rhs-items)
-				    (funcall cont nil)
-				    (let ((rhs-item (car rhs-items)))
-				      (typecase rhs-item
-					(simple-vector
-					 (rhs-items->fields (cdr rhs-items) type-wrapper
-							    (lambda (fields)
-							      (cons (list (svref rhs-item 0) (funcall type-wrapper (svref rhs-item 1))) fields))))
-					(cons
-					 (rhs-items->fields rhs-item
-							    (lambda (field) (funcall type-wrapper `(list-of ,field)))
-							    (lambda (fields)
-							      (rhs-items->fields (cdr rhs-items) type-wrapper
-										 (lambda (fields2) (funcall cont (append fields fields2)))))))
-					(otherwise (rhs-items->fields (cdr rhs-items) type-wrapper cont)))))))
-		       
-		       (dolist (prod grammar)
-			 (let ((lhs (car prod)))
-			   (pushnew lhs lhs-list)
-			   (setf (gethash lhs lhs-variants-map) (cons prod (gethash lhs lhs-variants-map)))))
-		       `(progn
-			  ,@(mapcar (lambda (lhs)
-				      (let ((variant-productions (gethash lhs lhs-variants-map)))
-					`(define-datatype ,lhs ,(intern (concatenate 'string (symbol-name lhs) "-P"))
-					   ,@(mapcar (lambda (production)
-						       (destructuring-bind (lhs rhs-items prod-name) production
-							 `(,prod-name
-							   ,@(rhs-items->fields rhs-items))))
-						     variant-productions))))
-				    lhs-list)))))
-		 (make-datatype-from-ast (ast)
-		   (let ((builder-map (make-hash-table)))
-		     (labels ((rhs-items->builder (rhs-items &optional (data-wrapper #'identity))
-				(if (null rhs-items)
-				    (funcall data-wrapper nil)
-				    (lambda (ast)
-				      (let (rhs-item (car rhs-items))
-					(etypecase rhs-item ;;todo
-					  (cons (if (consp (car ast))
-						    (append
-						     (funcall
-						      (rhs-items->builder rhs-item (lambda (args) (cons 'list-of args)))
-						      (car ast))
-						     (funcall (rhs-items->builder (cdr rhs-items) data-wrapper) (cdr ast)))
-						    (error "ast's head is not a cons ~A" ast)))
-					  (symbol
-					   (case rhs-item
-					     (arbno )
-					     (separated-list )
-					     ( )))
-					  (simple-vector
-					   (cons (intern (symbol-name (svref rhs-item 0)) 'keyword)
-						 (cons (funcall (gethash (caar ast) builder-map) (cdar ast))
-						       (funcall (rhs-items->builder (cdr rhs-items) data-wrapper) (cdr ast)))))
-					  (string (if (equal rhs-item (car ast))
-						      (funcall (rhs-items->builder (cdr rhs-items) data-wrapper) (cdr ast))
-						      (error "string is not equal:'~A' and '~A'" (car ast) rhs-item)))))))))
-		       (dolist (production grammer)
-			 (destructuring-bind (lhs rhs-items prod-name) production
-			   (setf (gethash prod-name builder-map)
-				 (rhs-items->builder rhs-items))))
-		       (let* ((prod-name (car ast))
-			      (builder (gethash prod-type builder-map)))
-			 (if (null builder)
-			     (error "Can not find builder for production: ~A~%" prod-name)
-			     (funcall builder (cdr ast))))))))
-	;;todo
-	)
       (mapcar (lambda (k) (pushnew k keywords)) (walk grammar))
       (format t "keywords: ~A~%" keywords)
       (let ((scanner (make-string-scanner (cons (list 'keyword (cons 'or keywords) 'string)
@@ -394,6 +322,81 @@
 			 variant-slots)))
 		 )
 	       variants)))
+
+(defun grammar->def-datatype (grammar)
+  (let ((lhs-variants-map (make-hash-table))
+	(lhs-list '()))
+    (labels ((rhs-items->fields (rhs-items &optional (type-wrapper #'identity) (cont #'identity))
+	       (if (null rhs-items)
+		   (funcall cont nil)
+		   (let ((rhs-item (car rhs-items)))
+		     (typecase rhs-item
+		       (simple-vector
+			(rhs-items->fields (cdr rhs-items) type-wrapper
+					   (lambda (fields)
+					     (funcall cont (cons (list (svref rhs-item 0) (funcall type-wrapper (svref rhs-item 1))) fields)))))
+		       (cons
+			(rhs-items->fields rhs-item
+					   (lambda (field) (funcall type-wrapper `(list-of ,field)))
+					   (lambda (fields)
+					     (rhs-items->fields (cdr rhs-items) type-wrapper
+								(lambda (fields2) (funcall cont (append fields fields2)))))))
+		       (otherwise (rhs-items->fields (cdr rhs-items) type-wrapper cont)))))))
+      
+      (dolist (prod grammar)
+	(let ((lhs (car prod)))
+	  (pushnew lhs lhs-list)
+	  (setf (gethash lhs lhs-variants-map) (cons prod (gethash lhs lhs-variants-map)))))
+      `(progn
+	 ,@(mapcar (lambda (lhs)
+		     (let ((variant-productions (gethash lhs lhs-variants-map)))
+		       `(define-datatype ,lhs ,(intern (concatenate 'string (symbol-name lhs) "-P"))
+			  ,@(mapcar (lambda (production)
+				      (destructuring-bind (lhs rhs-items prod-name) production
+					`(,prod-name
+					  ,@(rhs-items->fields rhs-items))))
+				    variant-productions))))
+		   lhs-list)))))
+
+(defmacro def-datatype-from-grammar (grammar)
+  (grammar->def-datatype grammar))
+
+(defmacro make-datatype-from-ast (ast)
+  (let ((builder-map (make-hash-table)))
+    (labels ((rhs-items->builder (rhs-items &optional (data-wrapper #'identity))
+	       (if (null rhs-items)
+		   (funcall data-wrapper nil)
+		   (lambda (ast)
+		     (let (rhs-item (car rhs-items))
+		       (etypecase rhs-item ;;todo
+			 (cons (if (consp (car ast))
+				   (append
+				    (funcall
+				     (rhs-items->builder rhs-item (lambda (args) (cons 'list-of args)))
+				     (car ast))
+				    (funcall (rhs-items->builder (cdr rhs-items) data-wrapper) (cdr ast)))
+				   (error "ast's head is not a cons ~A" ast)))
+			 (symbol
+			  (case rhs-item
+			    (arbno )
+			    (separated-list )
+			    ( )))
+			 (simple-vector
+			  (cons (intern (symbol-name (svref rhs-item 0)) 'keyword)
+				(cons (funcall (gethash (caar ast) builder-map) (cdar ast))
+				      (funcall (rhs-items->builder (cdr rhs-items) data-wrapper) (cdr ast)))))
+			 (string (if (equal rhs-item (car ast))
+				     (funcall (rhs-items->builder (cdr rhs-items) data-wrapper) (cdr ast))
+				     (error "string is not equal:'~A' and '~A'" (car ast) rhs-item)))))))))
+      (dolist (production grammer)
+	(destructuring-bind (lhs rhs-items prod-name) production
+	  (setf (gethash prod-name builder-map)
+		(rhs-items->builder rhs-items))))
+      (let* ((prod-name (car ast))
+	     (builder (gethash prod-type builder-map)))
+	(if (null builder)
+	    (error "Can not find builder for production: ~A~%" prod-name)
+	    (funcall builder (cdr ast)))))))
 
 (setf scanner-spec-a
   '((white-sp (whitespace) skip)
