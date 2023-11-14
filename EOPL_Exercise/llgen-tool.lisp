@@ -361,42 +361,54 @@
 (defmacro def-datatype-from-grammar (grammar)
   (grammar->def-datatype grammar))
 
-(defmacro make-datatype-from-ast (ast)
+(defun ast->make-data (ast grammar)
   (let ((builder-map (make-hash-table)))
     (labels ((rhs-items->builder (rhs-items &optional (data-wrapper #'identity))
 	       (if (null rhs-items)
-		   (funcall data-wrapper nil)
+		   (lambda (ast) (funcall data-wrapper nil))
 		   (lambda (ast)
-		     (let (rhs-item (car rhs-items))
+		     (let ((rhs-item (car rhs-items)))
 		       (etypecase rhs-item ;;todo
 			 (cons (if (consp (car ast))
 				   (append
 				    (funcall
-				     (rhs-items->builder rhs-item (lambda (args) (cons 'list-of args)))
+				     (rhs-items->builder rhs-item (lambda (args) (cons 'list-of args)));;TODO list-of ??
 				     (car ast))
 				    (funcall (rhs-items->builder (cdr rhs-items) data-wrapper) (cdr ast)))
 				   (error "ast's head is not a cons ~A" ast)))
 			 (symbol
-			  (case rhs-item
-			    (arbno )
-			    (separated-list )
-			    ( )))
+			  (if (or (equal rhs-item 'arbno) (equal rhs-item 'separated-list))
+			      (mapcar #'(lambda (item)
+					  (funcall (rhs-items->builder (cdr rhs-items) ) item)) ;;type-wrapper ??
+				      ast)
+			      (error "unexpected condition in make-datatype-from-ast")))
 			 (simple-vector
-			  (cons (intern (symbol-name (svref rhs-item 0)) 'keyword)
-				(cons (funcall (gethash (caar ast) builder-map) (cdar ast))
-				      (funcall (rhs-items->builder (cdr rhs-items) data-wrapper) (cdr ast)))))
+			  (let* ((prod-type (svref rhs-item 1))
+				 (token-name (svref rhs-item 0))
+				 (builder (if (consp (car ast)) (gethash (caar ast) builder-map))))
+			    (if (null builder)
+				(ecase prod-type
+				  ((identifier number) (cons (list token-name (car ast))
+						    (funcall (rhs-items->builder (cdr rhs-items) data-wrapper) (cdr ast)))))
+				(cons (intern (symbol-name (svref rhs-item 0)) 'keyword)
+				      (cons (funcall builder (cdar ast))
+					    (funcall (rhs-items->builder (cdr rhs-items) data-wrapper) (cdr ast)))))))
 			 (string (if (equal rhs-item (car ast))
 				     (funcall (rhs-items->builder (cdr rhs-items) data-wrapper) (cdr ast))
 				     (error "string is not equal:'~A' and '~A'" (car ast) rhs-item)))))))))
-      (dolist (production grammer)
+      (dolist (production grammar)
 	(destructuring-bind (lhs rhs-items prod-name) production
+	  (format t "register builder for ~A~%" prod-name)
 	  (setf (gethash prod-name builder-map)
 		(rhs-items->builder rhs-items))))
       (let* ((prod-name (car ast))
-	     (builder (gethash prod-type builder-map)))
+	     (builder (gethash prod-name builder-map)))
 	(if (null builder)
 	    (error "Can not find builder for production: ~A~%" prod-name)
-	    (funcall builder (cdr ast)))))))
+	    (cons prod-name (funcall builder (cdr ast))))))))
+
+(defmacro make-datatype-from-ast (ast grammar)
+  (ast->make-data ast grammar))
 
 (setf scanner-spec-a
   '((white-sp (whitespace) skip)
